@@ -1,9 +1,13 @@
 from randevu.kullanici import Hasta, Doktor, Yonetici
-from randevu.klinik import Klinik, Hizmet, RandevuSistemi
+from randevu.klinik import Kurum, Klinik, Hizmet, RandevuSistemi
 
 
 def main():
+    kurum = Kurum("Yaşam Sağlık Grubu")
     klinik = Klinik("Merkez Klinik")
+    kurum.sube_ekle(klinik)
+    kurum.sube_ekle(Klinik("Kadıköy Şubesi", acilis=9, kapanis=18))
+    print("Şubeler:", [k.ad for k in kurum.subeler])
     klinik.bolum_ekle("Dahiliye")
     muayene = Hizmet("Genel Muayene", 30, 500.0)
     klinik.hizmet_ekle(muayene)

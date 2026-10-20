@@ -73,9 +73,11 @@ class SaglikPersoneli(Kullanici):
             raise ValueError("Geçersiz saat aralığı.")
         self._musaitlik.append((gun, baslangic, bitis))
 
-    def musait_mi(self, gun: str, baslangic: int, bitis: int) -> bool:
-        return any(g == gun and b <= baslangic and bitis <= s
-                   for g, b, s in self._musaitlik)
+    def musait_mi(self, gun: str, baslangic: float, bitis: float) -> bool:
+        for g, b, s in self._musaitlik:
+            if g == gun and b <= baslangic and bitis <= s:
+                return True
+        return False
 
 
 class Doktor(SaglikPersoneli):

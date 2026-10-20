@@ -8,7 +8,7 @@ class Kullanici(ABC):
     def __init__(self, ad: str, soyad: str, tc_no: str):
         self.ad = ad
         self.soyad = soyad
-        self.__tc_no = None          # kapsülleme: özel alan
+        self.__tc_no = None          # Kapsülleme: özel alan
         self.tc_no = tc_no           # property üzerinden doğrulanır
 
     @property
@@ -51,8 +51,8 @@ class SaglikPersoneli(Kullanici):
     def __init__(self, ad, soyad, tc_no, uzmanlik: str):
         super().__init__(ad, soyad, tc_no)
         self.uzmanlik = uzmanlik
-        self._hizmetler = []         # korumalı alan
-        self._musaitlik = []         # (gun, baslangic_saat, bitis_saat)
+        self._klinikler = []     # bir personel birden fazla kliniğe bağlı olabilir
+        self._musaitlik = []     # (baslangic datetime, bitis datetime)
 
     def rol(self) -> str:
         return "Sağlık Personeli"
@@ -60,28 +60,42 @@ class SaglikPersoneli(Kullanici):
     def yetkiler(self) -> list[str]:
         return ["randevu_onayla", "musaitlik_tanimla"]
 
-    def hizmet_ekle(self, hizmet) -> None:
-        if hizmet not in self._hizmetler:
-            self._hizmetler.append(hizmet)
+    def klinige_katil(self, klinik) -> None:
+        """Klinik.doktor_ekle() tarafından çağrılır."""
+        if klinik not in self._klinikler:
+            self._klinikler.append(klinik)
 
     @property
-    def hizmetler(self) -> tuple:
-        return tuple(self._hizmetler)   # dışarıya salt okunur görünüm
+    def klinikler(self) -> tuple:
+        return tuple(self._klinikler)    # dışarıya salt okunur
 
-    def musaitlik_ekle(self, gun: str, baslangic: int, bitis: int) -> None:
-        if not (0 <= baslangic < bitis <= 24):
-            raise ValueError("Geçersiz saat aralığı.")
-        self._musaitlik.append((gun, baslangic, bitis))
+    @property
+    def hizmetler(self) -> list:
+        """Personelin sunduğu hizmetler = bağlı olduğu kliniklerin hizmetleri."""
+        sonuc = []
+        for klinik in self._klinikler:
+            sonuc.extend(klinik.hizmetler)
+        return sonuc
 
-    def musait_mi(self, gun: str, baslangic: float, bitis: float) -> bool:
-        for g, b, s in self._musaitlik:
-            if g == gun and b <= baslangic and bitis <= s:
+    def musaitlik_ekle(self, baslangic, bitis) -> None:
+        """Çalışılan zaman aralığı (datetime). Örn: 14.10.2026 09:00 - 12:00"""
+        if baslangic >= bitis:
+            raise ValueError("Bitiş, başlangıçtan sonra olmalı.")
+        self._musaitlik.append((baslangic, bitis))
+
+    def musaitlik_listesi(self, gun) -> list:
+        """Verilen günün (date) (baslangic, bitis) aralıkları."""
+        return [(b, s) for b, s in self._musaitlik if b.date() == gun]
+
+    def musait_mi(self, baslangic, bitis) -> bool:
+        for b, s in self._musaitlik:
+            if b <= baslangic and bitis <= s:
                 return True
         return False
 
 
 class Doktor(SaglikPersoneli):
-    def rol(self) -> str:        # çok biçimlilik: method overriding
+    def rol(self) -> str:        # Çok biçimlilik: method overriding
         return "Doktor"
 
     def yetkiler(self) -> list[str]:

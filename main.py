@@ -1,72 +1,61 @@
 from datetime import date, datetime, time
 
 from randevu.kullanici import Hasta, Doktor, Yonetici
-from randevu.kurum import Kurum, Hastane, Klinik, Hizmet
+from randevu.kurum import Kurum, Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import RandevuSistemi
 
 
 def main():
-    # Kurum -> Hastane -> Klinik -> Doktor
     kurum = Kurum("Yaşam Sağlık Grubu")
-    merkez = Hastane("Merkez Hastane", time(8, 0), time(17, 0))
-    kadikoy = Hastane("Kadıköy Hastane", time(9, 0), time(18, 0))
-    kurum.hastane_ekle(merkez)
-    kurum.hastane_ekle(kadikoy)
+    sistem = RandevuSistemi()
 
-    dahiliye = Klinik("Dahiliye")
-    kardiyoloji = Klinik("Kardiyoloji")
-    merkez.klinik_ekle(dahiliye)
-    merkez.klinik_ekle(kardiyoloji)
-
-    # Hizmetler kliniğe bağlı
-    muayene = Hizmet("Genel Muayene", 30, 500.0)
-    ekg = Hizmet("EKG", 30, 700.0)
-    dahiliye.hizmet_ekle(muayene)
-    kardiyoloji.hizmet_ekle(muayene)
-    kardiyoloji.hizmet_ekle(ekg)
-
-    # Bir doktor iki kliniğe bağlı
-    doktor = Doktor("Ayşe", "Yılmaz", "12345678901", "Dahiliye")
-    dahiliye.doktor_ekle(doktor)
-    kardiyoloji.doktor_ekle(doktor)
-
-    gun = date(2026, 10, 14)
-    # Doktor 14.10.2026 günü 13:00-15:00 arası çalışıyor
-    doktor.musaitlik_ekle(datetime(2026, 10, 14, 13, 0), datetime(2026, 10, 14, 15, 0))
-
+    admin = Yonetici("Mehmet", "Kaya", "11111111111")
     hasta = Hasta("Ali", "Demir", "10987654321")
-    yonetici = Yonetici("Mehmet", "Kaya", "11111111111")
+    baska_hasta = Hasta("Veli", "Can", "22222222222")
+    doktor = Doktor("Ayşe", "Yılmaz", "12345678901", "Dahiliye")
 
     # Çok biçimlilik: aynı çağrı, role göre farklı sonuç
-    for k in (hasta, doktor, yonetici):
+    for k in (admin, hasta, doktor):
         print(k, "->", k.yetkiler())
 
-    # MHRS akışı: hastane -> klinik -> doktor -> saat tablosu
-    sistem = RandevuSistemi()
-    print("Doktorun klinikleri:", [k.ad for k in doktor.klinikler])
+    # Admin yapıyı kurar: Kurum -> Hastane -> Klinik -> Doktor
+    merkez = Hastane("Merkez Hastane", time(8, 0), time(17, 0))
+    dahiliye = Klinik("Dahiliye")
+    kardiyoloji = Klinik("Kardiyoloji")
+    muayene = Muayene("Genel Muayene", 30, 500.0)
+    ekg = Radyoloji("EKG", 30, 400.0, cihaz_ucreti=300.0)
 
-    def tabloyu_goster():
-        for slot in sistem.saat_tablosu(merkez, doktor, muayene, gun):
-            print("  ", slot)
+    admin.hastane_ekle(kurum, merkez)
+    admin.klinik_ekle(merkez, dahiliye)
+    admin.klinik_ekle(merkez, kardiyoloji)
+    admin.hizmet_ekle(dahiliye, muayene)
+    admin.hizmet_ekle(kardiyoloji, ekg)
+    admin.doktor_ekle(dahiliye, doktor)
+    admin.doktor_ekle(kardiyoloji, doktor)   # bir doktor iki klinikte
+    doktor.musaitlik_ekle(datetime(2026, 10, 14, 13, 0), datetime(2026, 10, 14, 15, 0))
 
-    print("Saat tablosu (başlangıç):")
-    tabloyu_goster()
-
+    # Normal kullanıcı randevu alır
     zaman = datetime(2026, 10, 14, 13, 30)
-    r = sistem.randevu_olustur(hasta, merkez, dahiliye, doktor, muayene, zaman)
-    r.onayla()
+    r = hasta.randevu_al(sistem, merkez, dahiliye, doktor, muayene, zaman)
+    doktor.randevu_onayla(r)
     print(r)
-    print("Randevudan sonra:")
-    tabloyu_goster()
 
-    try:
-        sistem.randevu_olustur(hasta, merkez, kardiyoloji, doktor, ekg, zaman)
-    except ValueError as e:
-        print("Hata:", e)
+    # Yetkisiz işlemler engellenir
+    denemeler = [
+        ("Hasta hastane eklemeye çalışıyor", lambda: hasta.hastane_ekle(kurum, merkez)),
+        ("Başkası randevuyu iptal etmeye çalışıyor", lambda: baska_hasta.randevu_iptal(r)),
+    ]
+    for aciklama, islem in denemeler:
+        try:
+            islem()
+        except (PermissionError, AttributeError) as e:
+            print(aciklama, "-> Engellendi:", e)
 
-    r.iptal()
-    print("İptalden sonra (13:30 tekrar yeşil):")
-    tabloyu_goster()
+    # Hasta kendi randevusunu iptal eder -> saat yeşile döner
+    hasta.randevu_iptal(r)
+    print(r.durum.value)
+    for slot in sistem.saat_tablosu(merkez, doktor, muayene, date(2026, 10, 14)):
+        print("  ", slot)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,60 @@
 """Kurum yapısı: Kurum -> Hastane (şube) -> Klinik (bölüm) -> Doktorlar."""
+from abc import ABC, abstractmethod
 from datetime import time
 
 
-class Hizmet:
-    """Kliniğin sunduğu bir sağlık hizmeti (ad, süre, ücret)."""
+class Hizmet(ABC):
+    """Soyut hizmet: ad, süre ve taban ücret. Türler bu sınıftan türer."""
 
-    def __init__(self, ad: str, sure_dk: int, ucret: float):
+    def __init__(self, ad: str, sure_dk: int, taban_ucret: float):
         self.ad = ad
         self.sure_dk = sure_dk
-        self.ucret = ucret
+        self._taban_ucret = taban_ucret      # Kapsülleme: dışarıdan değiştirilmez
+
+    @abstractmethod
+    def tur(self) -> str:
+        """Hizmetin türü (alt sınıflar ezer)."""
+
+    def ucret_hesapla(self, indirim_orani: float = 0.0) -> float:
+        """Aşırı yükleme (overloading) benzeri: ucret_hesapla() veya ucret_hesapla(0.1)."""
+        return self._taban_ucret * (1 - indirim_orani)
+
+    @property
+    def ucret(self) -> float:
+        return self.ucret_hesapla()
+
+
+class Muayene(Hizmet):
+    def tur(self) -> str:
+        return "Muayene"
+
+
+class Radyoloji(Hizmet):
+    """Görüntüleme hizmeti: taban ücrete cihaz ücreti eklenir."""
+
+    def __init__(self, ad, sure_dk, taban_ucret, cihaz_ucreti: float):
+        super().__init__(ad, sure_dk, taban_ucret)
+        self._cihaz_ucreti = cihaz_ucreti
+
+    def tur(self) -> str:
+        return "Radyoloji"
+
+    def ucret_hesapla(self, indirim_orani: float = 0.0) -> float:   # overriding
+        return (self._taban_ucret + self._cihaz_ucreti) * (1 - indirim_orani)
+
+
+class Laboratuvar(Hizmet):
+    """Tahlil hizmeti: ücret, tahlil sayısıyla çarpılır."""
+
+    def __init__(self, ad, sure_dk, taban_ucret, tahlil_sayisi: int = 1):
+        super().__init__(ad, sure_dk, taban_ucret)
+        self._tahlil_sayisi = tahlil_sayisi
+
+    def tur(self) -> str:
+        return "Laboratuvar"
+
+    def ucret_hesapla(self, indirim_orani: float = 0.0) -> float:   # overriding
+        return self._taban_ucret * self._tahlil_sayisi * (1 - indirim_orani)
 
 
 class Klinik:

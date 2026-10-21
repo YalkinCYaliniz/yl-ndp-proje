@@ -33,16 +33,36 @@ class Kullanici(ABC):
     def yetkiler(self) -> list[str]:
         """Rolün yapabildiği işlemler (alt sınıflar ezer)."""
 
+    def yetki_var_mi(self, islem: str) -> bool:
+        return islem in self.yetkiler()
+
+    def _yetki_kontrol(self, islem: str) -> None:
+        """Alt sınıfların metotları işlem öncesi bunu çağırır."""
+        if not self.yetki_var_mi(islem):
+            raise PermissionError(f"{self.rol()} '{islem}' işlemini yapamaz.")
+
     def __str__(self) -> str:
         return f"[{self.rol()}] {self.tam_ad}"
 
 
 class Hasta(Kullanici):
+    """Normal kullanıcı: randevu alır ve sadece kendi randevusunu iptal eder."""
+
     def rol(self) -> str:
         return "Hasta"
 
     def yetkiler(self) -> list[str]:
         return ["randevu_al", "randevu_iptal"]
+
+    def randevu_al(self, sistem, hastane, klinik, doktor, hizmet, baslangic):
+        self._yetki_kontrol("randevu_al")
+        return sistem.randevu_olustur(self, hastane, klinik, doktor, hizmet, baslangic)
+
+    def randevu_iptal(self, randevu) -> None:
+        self._yetki_kontrol("randevu_iptal")
+        if randevu.hasta is not self:
+            raise PermissionError("Başkasının randevusunu iptal edemezsiniz.")
+        randevu.iptal()
 
 
 class SaglikPersoneli(Kullanici):
@@ -59,6 +79,12 @@ class SaglikPersoneli(Kullanici):
 
     def yetkiler(self) -> list[str]:
         return ["randevu_onayla", "musaitlik_tanimla"]
+
+    def randevu_onayla(self, randevu) -> None:
+        self._yetki_kontrol("randevu_onayla")
+        if randevu.doktor is not self:
+            raise PermissionError("Sadece kendi randevularınızı onaylayabilirsiniz.")
+        randevu.onayla()
 
     def klinige_katil(self, klinik) -> None:
         """Klinik.doktor_ekle() tarafından çağrılır."""
@@ -103,8 +129,30 @@ class Doktor(SaglikPersoneli):
 
 
 class Yonetici(Kullanici):
+    """Admin: hastane, klinik, doktor, hizmet ve randevu ekleyebilir."""
+
     def rol(self) -> str:
-        return "Klinik Yöneticisi"
+        return "Admin"
 
     def yetkiler(self) -> list[str]:
-        return ["klinik_tanimla", "hizmet_tanimla", "personel_kaydet"]
+        return ["hastane_ekle", "klinik_ekle", "doktor_ekle", "hizmet_ekle", "randevu_ekle"]
+
+    def hastane_ekle(self, kurum, hastane) -> None:
+        self._yetki_kontrol("hastane_ekle")
+        kurum.hastane_ekle(hastane)
+
+    def klinik_ekle(self, hastane, klinik) -> None:
+        self._yetki_kontrol("klinik_ekle")
+        hastane.klinik_ekle(klinik)
+
+    def doktor_ekle(self, klinik, doktor) -> None:
+        self._yetki_kontrol("doktor_ekle")
+        klinik.doktor_ekle(doktor)
+
+    def hizmet_ekle(self, klinik, hizmet) -> None:
+        self._yetki_kontrol("hizmet_ekle")
+        klinik.hizmet_ekle(hizmet)
+
+    def randevu_ekle(self, sistem, hasta, hastane, klinik, doktor, hizmet, baslangic):
+        self._yetki_kontrol("randevu_ekle")
+        return sistem.randevu_olustur(hasta, hastane, klinik, doktor, hizmet, baslangic)

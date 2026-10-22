@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 
-from randevu.kullanici import Hasta, Doktor, Yonetici
+from randevu.kullanici import Hasta, Doktor, Yonetici, Hemsire, Teknisyen
 from randevu.kurum import Kurum, Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import RandevuSistemi
 
@@ -14,8 +14,11 @@ def main():
     baska_hasta = Hasta("Veli", "Can", "22222222222")
     doktor = Doktor("Ayşe", "Yılmaz", "12345678901", "Dahiliye")
 
+    hemsire = Hemsire("Zeynep", "Acar", "33333333333", "Hemşirelik")
+    teknisyen = Teknisyen("Can", "Er", "44444444444", "Radyoloji", cihaz="EKG Cihazı")
+
     # Çok biçimlilik: aynı çağrı, role göre farklı sonuç
-    for k in (admin, hasta, doktor):
+    for k in (admin, hasta, doktor, hemsire, teknisyen):
         print(k, "->", k.yetkiler())
 
     # Admin yapıyı kurar: Kurum -> Hastane -> Klinik -> Doktor
@@ -39,10 +42,13 @@ def main():
     r = hasta.randevu_al(sistem, merkez, dahiliye, doktor, muayene, zaman)
     doktor.randevu_onayla(r)
     print(r)
+    print(hemsire.hasta_kabul(r))
+    print(teknisyen.tetkik_yap(r))
 
     # Yetkisiz işlemler engellenir
     denemeler = [
         ("Hasta hastane eklemeye çalışıyor", lambda: hasta.hastane_ekle(kurum, merkez)),
+        ("Hemşire randevu onaylamaya çalışıyor", lambda: hemsire.randevu_onayla(r)),
         ("Başkası randevuyu iptal etmeye çalışıyor", lambda: baska_hasta.randevu_iptal(r)),
     ]
     for aciklama, islem in denemeler:

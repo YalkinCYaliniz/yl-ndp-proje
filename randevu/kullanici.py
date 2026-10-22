@@ -78,7 +78,7 @@ class SaglikPersoneli(Kullanici):
         return "Sağlık Personeli"
 
     def yetkiler(self) -> list[str]:
-        return ["randevu_onayla", "musaitlik_tanimla"]
+        return ["musaitlik_tanimla"]
 
     def randevu_onayla(self, randevu) -> None:
         self._yetki_kontrol("randevu_onayla")
@@ -125,7 +125,39 @@ class Doktor(SaglikPersoneli):
         return "Doktor"
 
     def yetkiler(self) -> list[str]:
-        return super().yetkiler() + ["recete_yaz"]
+        return super().yetkiler() + ["randevu_onayla", "recete_yaz"]
+
+
+class Hemsire(SaglikPersoneli):
+    """Randevu onaylayamaz; gelen hastayı kabul eder."""
+
+    def rol(self) -> str:
+        return "Hemşire"
+
+    def yetkiler(self) -> list[str]:
+        return super().yetkiler() + ["hasta_kabul"]
+
+    def hasta_kabul(self, randevu) -> str:
+        self._yetki_kontrol("hasta_kabul")
+        return f"{randevu.hasta.tam_ad} hasta kabulü yapıldı."
+
+
+class Teknisyen(SaglikPersoneli):
+    """Radyoloji/laboratuvar cihazını kullanır."""
+
+    def __init__(self, ad, soyad, tc_no, uzmanlik: str, cihaz: str):
+        super().__init__(ad, soyad, tc_no, uzmanlik)
+        self.cihaz = cihaz
+
+    def rol(self) -> str:
+        return "Teknisyen"
+
+    def yetkiler(self) -> list[str]:
+        return super().yetkiler() + ["tetkik_yap"]
+
+    def tetkik_yap(self, randevu) -> str:
+        self._yetki_kontrol("tetkik_yap")
+        return f"{randevu.hasta.tam_ad} için {self.cihaz} ile {randevu.hizmet.ad} yapıldı."
 
 
 class Yonetici(Kullanici):

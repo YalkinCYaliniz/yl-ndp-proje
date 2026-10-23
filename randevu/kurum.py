@@ -2,6 +2,8 @@
 from abc import ABC, abstractmethod
 from datetime import time
 
+from randevu.hatalar import BulunamadiHatasi
+
 
 class Hizmet(ABC):
     """Soyut hizmet: ad, süre ve taban ücret. Türler bu sınıftan türer."""
@@ -100,7 +102,7 @@ class Hastane:
         for klinik in self._klinikler:
             if klinik.ad == ad:
                 return klinik
-        raise ValueError(f"'{ad}' kliniği bulunamadı.")
+        raise BulunamadiHatasi(f"'{ad}' kliniği bulunamadı.")
 
     def acik_mi(self, baslangic, bitis) -> bool:
         """baslangic ve bitis datetime; saat kısmı çalışma saatleri içinde mi?"""
@@ -125,7 +127,7 @@ class Kurum:
         for hastane in self._hastaneler:
             if hastane.ad == ad:
                 return hastane
-        raise ValueError(f"'{ad}' hastanesi bulunamadı.")
+        raise BulunamadiHatasi(f"'{ad}' hastanesi bulunamadı.")
 
     @property
     def hastaneler(self) -> tuple:

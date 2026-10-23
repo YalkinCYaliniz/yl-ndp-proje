@@ -3,6 +3,7 @@ from datetime import date, datetime, time
 from randevu.kullanici import Hasta, Doktor, Yonetici, Hemsire, Teknisyen
 from randevu.kurum import Kurum, Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import RandevuSistemi
+from randevu.hatalar import YetkiHatasi
 
 
 def main():
@@ -54,7 +55,7 @@ def main():
     for aciklama, islem in denemeler:
         try:
             islem()
-        except (PermissionError, AttributeError) as e:
+        except (YetkiHatasi, AttributeError) as e:
             print(aciklama, "-> Engellendi:", e)
 
     # Hasta kendi randevusunu iptal eder -> saat yeşile döner

@@ -2,6 +2,8 @@
 from datetime import timedelta
 from enum import Enum
 
+from randevu.hatalar import RandevuHatasi
+
 
 class RandevuDurumu(Enum):
     BEKLIYOR = "Bekliyor"
@@ -103,17 +105,17 @@ class RandevuSistemi:
         yeni = Randevu(hasta, hastane, klinik, doktor, hizmet, baslangic)
 
         if klinik not in hastane.klinikler:
-            raise ValueError("Bu klinik seçilen hastanede yok.")
+            raise RandevuHatasi("Bu klinik seçilen hastanede yok.")
         if doktor not in klinik.doktorlar:
-            raise ValueError("Doktor bu klinikte çalışmıyor.")
+            raise RandevuHatasi("Doktor bu klinikte çalışmıyor.")
         if hizmet not in klinik.hizmetler:
-            raise ValueError("Bu hizmet seçilen klinikte verilmiyor.")
+            raise RandevuHatasi("Bu hizmet seçilen klinikte verilmiyor.")
         if not hastane.acik_mi(yeni.baslangic, yeni.bitis):
-            raise ValueError("Hastane bu saatte kapalı.")
+            raise RandevuHatasi("Hastane bu saatte kapalı.")
         if not doktor.musait_mi(yeni.baslangic, yeni.bitis):
-            raise ValueError("Doktor bu tarih/saatte müsait değil.")
+            raise RandevuHatasi("Doktor bu tarih/saatte müsait değil.")
         if self._dolu_mu(doktor, yeni.baslangic, yeni.bitis):
-            raise ValueError("Randevu çakışması var.")
+            raise RandevuHatasi("Randevu çakışması var.")
 
         self._randevular.append(yeni)
         return yeni

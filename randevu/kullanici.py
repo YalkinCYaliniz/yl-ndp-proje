@@ -1,6 +1,8 @@
 """Kullanıcı sınıf hiyerarşisi: soyut taban sınıf + kalıtım + çok biçimlilik."""
 from abc import ABC, abstractmethod
 
+from randevu.hatalar import YetkiHatasi
+
 
 class Kullanici(ABC):
     """Tüm roller için soyut taban sınıf."""
@@ -39,7 +41,7 @@ class Kullanici(ABC):
     def _yetki_kontrol(self, islem: str) -> None:
         """Alt sınıfların metotları işlem öncesi bunu çağırır."""
         if not self.yetki_var_mi(islem):
-            raise PermissionError(f"{self.rol()} '{islem}' işlemini yapamaz.")
+            raise YetkiHatasi(f"{self.rol()} '{islem}' işlemini yapamaz.")
 
     def __str__(self) -> str:
         return f"[{self.rol()}] {self.tam_ad}"
@@ -61,7 +63,7 @@ class Hasta(Kullanici):
     def randevu_iptal(self, randevu) -> None:
         self._yetki_kontrol("randevu_iptal")
         if randevu.hasta is not self:
-            raise PermissionError("Başkasının randevusunu iptal edemezsiniz.")
+            raise YetkiHatasi("Başkasının randevusunu iptal edemezsiniz.")
         randevu.iptal()
 
 
@@ -83,7 +85,7 @@ class SaglikPersoneli(Kullanici):
     def randevu_onayla(self, randevu) -> None:
         self._yetki_kontrol("randevu_onayla")
         if randevu.doktor is not self:
-            raise PermissionError("Sadece kendi randevularınızı onaylayabilirsiniz.")
+            raise YetkiHatasi("Sadece kendi randevularınızı onaylayabilirsiniz.")
         randevu.onayla()
 
     def klinige_katil(self, klinik) -> None:

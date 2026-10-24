@@ -41,7 +41,9 @@ def main():
     # Normal kullanıcı randevu alır
     zaman = datetime(2026, 10, 14, 13, 30)
     r = hasta.randevu_al(sistem, merkez, dahiliye, doktor, muayene, zaman)
+    print("Onay bekleyenler:", len(sistem.bekleyen_randevular(doktor)))
     doktor.randevu_onayla(r)
+    print("Onay bekleyenler:", len(sistem.bekleyen_randevular(doktor)))
     print(r)
     print(hemsire.hasta_kabul(r))
     print(teknisyen.tetkik_yap(r))
@@ -61,6 +63,9 @@ def main():
     # Hasta kendi randevusunu iptal eder -> saat yeşile döner
     hasta.randevu_iptal(r)
     print(r.durum.value)
+    print("Ali'nin randevu geçmişi:")
+    for gecmis in hasta.randevularim(sistem):
+        print("  ", gecmis)
     for slot in sistem.saat_tablosu(merkez, doktor, muayene, date(2026, 10, 14)):
         print("  ", slot)
 

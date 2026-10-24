@@ -83,6 +83,18 @@ class RandevuSistemi:
     def randevular(self) -> tuple:
         return tuple(self._randevular)
 
+    def hastanin_randevulari(self, hasta) -> list:
+        """Hastanın tüm randevuları (geçmiş dahil, iptaller de görünür)."""
+        return [r for r in self._randevular if r.hasta is hasta]
+
+    def doktorun_randevulari(self, doktor) -> list:
+        return [r for r in self._randevular if r.doktor is doktor]
+
+    def bekleyen_randevular(self, doktor) -> list:
+        """Doktorun onay bekleyen randevuları."""
+        return [r for r in self.doktorun_randevulari(doktor)
+                if r.durum == RandevuDurumu.BEKLIYOR]
+
     def _dolu_mu(self, doktor, baslangic, bitis) -> bool:
         for r in self._randevular:
             if r.doktor is doktor and r.cakisiyor_mu(baslangic, bitis):

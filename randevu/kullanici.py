@@ -60,6 +60,10 @@ class Hasta(Kullanici):
         self._yetki_kontrol("randevu_al")
         return sistem.randevu_olustur(self, hastane, klinik, doktor, hizmet, baslangic)
 
+    def randevularim(self, sistem) -> list:
+        """Hastanın kendi randevu geçmişi."""
+        return sistem.hastanin_randevulari(self)
+
     def randevu_iptal(self, randevu) -> None:
         self._yetki_kontrol("randevu_iptal")
         if randevu.hasta is not self:

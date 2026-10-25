@@ -8,6 +8,7 @@ from randevu.hatalar import RandevuHatasi
 class RandevuDurumu(Enum):
     BEKLIYOR = "Bekliyor"
     ONAYLANDI = "Onaylandı"
+    REDDEDILDI = "Reddedildi"
     IPTAL = "İptal"
 
 
@@ -38,13 +39,22 @@ class Randevu:
 
     @property
     def aktif_mi(self) -> bool:
-        """İptal edilmemiş randevu zamanı doldurur."""
-        return self._durum != RandevuDurumu.IPTAL
+        """İptal/red edilmemiş randevu zamanı doldurur."""
+        return self._durum not in (RandevuDurumu.IPTAL, RandevuDurumu.REDDEDILDI)
 
     def onayla(self) -> None:
+        if self._durum != RandevuDurumu.BEKLIYOR:
+            raise RandevuHatasi("Sadece bekleyen randevu onaylanabilir.")
         self._durum = RandevuDurumu.ONAYLANDI
 
+    def reddet(self) -> None:
+        if self._durum != RandevuDurumu.BEKLIYOR:
+            raise RandevuHatasi("Sadece bekleyen randevu reddedilebilir.")
+        self._durum = RandevuDurumu.REDDEDILDI
+
     def iptal(self) -> None:
+        if not self.aktif_mi:
+            raise RandevuHatasi("Bu randevu zaten iptal/red edilmiş.")
         self._durum = RandevuDurumu.IPTAL
 
     def cakisiyor_mu(self, baslangic, bitis) -> bool:

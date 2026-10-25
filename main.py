@@ -3,7 +3,7 @@ from datetime import date, datetime, time
 from randevu.kullanici import Hasta, Doktor, Yonetici, Hemsire, Teknisyen
 from randevu.kurum import Kurum, Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import RandevuSistemi
-from randevu.hatalar import YetkiHatasi
+from randevu.hatalar import YetkiHatasi, RandevuHatasi
 
 
 def main():
@@ -47,6 +47,16 @@ def main():
     print(r)
     print(hemsire.hasta_kabul(r))
     print(teknisyen.tetkik_yap(r))
+
+    # Doktor ikinci bir randevuyu reddeder -> saat tekrar boşalır
+    r2 = baska_hasta.randevu_al(sistem, merkez, dahiliye, doktor, muayene,
+                                datetime(2026, 10, 14, 14, 0))
+    doktor.randevu_reddet(r2)
+    print("İkinci randevu:", r2.durum.value)
+    try:
+        doktor.randevu_onayla(r2)
+    except RandevuHatasi as e:
+        print("Hata:", e)
 
     # Yetkisiz işlemler engellenir
     denemeler = [

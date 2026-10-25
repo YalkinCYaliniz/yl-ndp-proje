@@ -92,6 +92,12 @@ class SaglikPersoneli(Kullanici):
             raise YetkiHatasi("Sadece kendi randevularınızı onaylayabilirsiniz.")
         randevu.onayla()
 
+    def randevu_reddet(self, randevu) -> None:
+        self._yetki_kontrol("randevu_onayla")
+        if randevu.doktor is not self:
+            raise YetkiHatasi("Sadece kendi randevularınızı reddedebilirsiniz.")
+        randevu.reddet()
+
     def klinige_katil(self, klinik) -> None:
         """Klinik.doktor_ekle() tarafından çağrılır."""
         if klinik not in self._klinikler:

@@ -1,7 +1,7 @@
 """Kullanıcı sınıf hiyerarşisi: soyut taban sınıf + kalıtım + çok biçimlilik."""
 from abc import ABC, abstractmethod
 
-from randevu.hatalar import YetkiHatasi
+from randevu.hatalar import RandevuHatasi, YetkiHatasi
 
 
 class Kullanici(ABC):
@@ -134,7 +134,27 @@ class SaglikPersoneli(Kullanici):
         """Çalışılan zaman aralığı (datetime). Örn: 14.10.2026 09:00 - 12:00"""
         if baslangic >= bitis:
             raise ValueError("Bitiş, başlangıçtan sonra olmalı.")
+        for b, s in self._musaitlik:
+            if baslangic < s and b < bitis:
+                raise ValueError("Bu aralık mevcut bir müsaitlikle çakışıyor.")
         self._musaitlik.append((baslangic, bitis))
+
+    def musaitlik_yukle(self, baslangic, bitis) -> None:
+        """Dosyadan okunan müsaitliği kontrol yapmadan ekler."""
+        self._musaitlik.append((baslangic, bitis))
+
+    def musaitlik_sil(self, sira: int, randevular) -> None:
+        """Müsaitliği siler. İçinde aktif randevu varsa silinemez.
+
+        randevular: bu personelin randevu listesi.
+        """
+        self._yetki_kontrol("musaitlik_tanimla")
+        baslangic, bitis = self._musaitlik[sira]
+        for r in randevular:
+            if r.aktif_mi and baslangic <= r.baslangic and r.bitis <= bitis:
+                raise RandevuHatasi(
+                    "Bu aralıkta aktif randevu var; önce randevuyu iptal/reddedin.")
+        del self._musaitlik[sira]
 
     def musaitlik_listesi(self, gun) -> list:
         """Verilen günün (date) (baslangic, bitis) aralıkları."""

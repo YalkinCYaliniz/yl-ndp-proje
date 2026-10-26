@@ -77,7 +77,7 @@ def panel():
 # ---------------- HASTA ----------------
 def hasta_sayfasi(hasta: Hasta):
     ara = request.args
-    secim = {"hastane": None, "klinik": None, "doktor": None, "hizmet": None, "slotlar": None}
+    secim = {"hastane": None, "klinik": None, "doktor": None, "hizmet": None, "slotlar": None, "gunler": None}
     try:
         if ara.get("h"):
             secim["hastane"] = uyg.kurum.hastaneler[int(ara["h"])]
@@ -87,6 +87,9 @@ def hasta_sayfasi(hasta: Hasta):
             secim["doktor"] = secim["klinik"].doktorlar[int(ara["d"])]
         if ara.get("s") and secim["klinik"]:
             secim["hizmet"] = secim["klinik"].hizmetler[int(ara["s"])]
+        if secim["doktor"] and secim["hizmet"]:
+            secim["gunler"] = uyg.sistem.musait_gunler(
+                secim["hastane"], secim["doktor"], secim["hizmet"])
         if ara.get("tarih") and secim["doktor"] and secim["hizmet"]:
             gun = datetime.strptime(ara["tarih"], "%Y-%m-%d").date()
             secim["slotlar"] = uyg.sistem.saat_tablosu(
@@ -130,7 +133,24 @@ def hasta_odeme(sira):
 # ---------------- DOKTOR ----------------
 def doktor_sayfasi(doktor: Doktor):
     randevular = uyg.sistem.doktorun_randevulari(doktor)
-    return render_template("doktor.html", kullanici=doktor,
+    # Takvim için (hastane, klinik, hizmet) seçenekleri: saat adımı hizmet süresine göre
+    secenekler = [(h, k, s) for h in uyg.kurum.hastaneler for k in h.klinikler
+                  if doktor in k.doktorlar for s in k.hizmetler]
+    takvim = []
+    secili = 0
+    if secenekler:
+        try:
+            secili = int(request.args.get("x", 0))
+            hastane, _, hizmet = secenekler[secili]
+        except (ValueError, IndexError):
+            secili = 0
+            hastane, _, hizmet = secenekler[0]
+        gunler = sorted({b.date() for b, _ in doktor.musaitlik})
+        takvim = [(gun, uyg.sistem.saat_tablosu(hastane, doktor, hizmet, gun)) for gun in gunler]
+    musaitlikler = sorted(enumerate(doktor.musaitlik), key=lambda cift: cift[1][0])
+    return render_template("doktor.html", kullanici=doktor, secenekler=secenekler,
+                           musaitlikler=musaitlikler,
+                           secili=secili, takvim=takvim,
                            randevular=[(uyg.sistem.randevular.index(r), r) for r in randevular])
 
 
@@ -154,6 +174,14 @@ def doktor_musaitlik():
     calistir(lambda: simdiki_kullanici().musaitlik_ekle(
         datetime.fromisoformat(f["baslangic"]), datetime.fromisoformat(f["bitis"])),
         "Müsaitlik eklendi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/doktor/musaitlik-sil/<int:sira>")
+def doktor_musaitlik_sil(sira):
+    doktor = simdiki_kullanici()
+    calistir(lambda: doktor.musaitlik_sil(sira, uyg.sistem.doktorun_randevulari(doktor)),
+             "Müsaitlik silindi.")
     return redirect(url_for("panel"))
 
 
@@ -222,4 +250,4 @@ def admin_doktor_ata():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)

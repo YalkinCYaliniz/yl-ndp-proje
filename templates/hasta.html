@@ -22,11 +22,20 @@
     {% for s in secim.klinik.hizmetler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('s') == loop.index0|string }}>{{ s.ad }} · {{ s.tur() }} · {{ s.sure_dk }} dk · {{ s.ucret }} TL</option>{% endfor %}
   </select>
   {% endif %}
-  {% if secim.doktor and secim.hizmet %}
-  <input type="date" name="tarih" value="{{ ara.get('tarih', '') }}" onchange="this.form.submit()">
-  {% endif %}
   <noscript><button>Devam</button></noscript>
 </form>
+
+{% if secim.gunler is not none %}
+  <h3>Müsait Günler <small>(🟢 boş yer var · 🔴 tamamen dolu)</small></h3>
+  {% if not secim.gunler %}<p>Doktorun tanımlı müsaitliği yok.</p>{% endif %}
+  {% for gun, bos in secim.gunler %}
+    {% set iso = gun.isoformat() %}
+    <a class="slot {{ 'bos' if bos else 'dolu' }}" style="text-decoration:none; {{ 'outline:3px solid #036;' if ara.get('tarih') == iso }}"
+       href="{{ url_for('panel', h=ara['h'], k=ara['k'], d=ara['d'], s=ara['s'], tarih=iso) }}">
+      {{ gun.strftime('%d.%m.%Y') }} · {{ bos }} boş
+    </a>
+  {% endfor %}
+{% endif %}
 
 {% if secim.slotlar is not none %}
   <h3>Saat Tablosu <small>(🟢 boş · 🔴 dolu)</small></h3>

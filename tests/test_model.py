@@ -154,6 +154,34 @@ class RandevuTest(TemelTest):
         self.assertFalse(slotlar[self.zaman].dolu)
         self.assertEqual(slotlar[self.zaman].renk, "yeşil")
 
+    def test_musait_gunler_ve_bos_sayisi(self):
+        self.assertEqual(self.sistem.musait_gunler(self.merkez, self.doktor, self.muayene),
+                         [(self.zaman.date(), 4)])
+        self.randevu_al()
+        self.assertEqual(self.sistem.musait_gunler(self.merkez, self.doktor, self.muayene)[0][1], 3)
+
+    def test_dolu_slot_randevuyu_gosterir(self):
+        r = self.randevu_al()
+        slotlar = self.sistem.saat_tablosu(self.merkez, self.doktor, self.muayene, self.zaman.date())
+        dolu = [s for s in slotlar if s.dolu][0]
+        self.assertIs(dolu.randevu, r)
+
+    def test_musaitlik_cakisan_aralik_eklenemez(self):
+        with self.assertRaises(ValueError):
+            self.doktor.musaitlik_ekle(datetime(2026, 10, 14, 14, 0), datetime(2026, 10, 14, 16, 0))
+
+    def test_musaitlik_sil(self):
+        self.doktor.musaitlik_sil(0, self.sistem.doktorun_randevulari(self.doktor))
+        self.assertEqual(self.doktor.musaitlik, ())
+
+    def test_aktif_randevusu_olan_musaitlik_silinemez(self):
+        r = self.randevu_al()
+        with self.assertRaises(RandevuHatasi):
+            self.doktor.musaitlik_sil(0, self.sistem.doktorun_randevulari(self.doktor))
+        self.hasta.randevu_iptal(r)         # iptal sonrası silinebilir
+        self.doktor.musaitlik_sil(0, self.sistem.doktorun_randevulari(self.doktor))
+        self.assertEqual(self.doktor.musaitlik, ())
+
     def test_baskasinin_randevusu_iptal_edilemez(self):
         r = self.randevu_al()
         with self.assertRaises(YetkiHatasi):

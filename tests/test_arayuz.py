@@ -32,6 +32,30 @@ class ArayuzTest(unittest.TestCase):
         self.assertIn("slot dolu", sayfa)
         self.assertIn("Bekliyor", sayfa)
 
+    def test_hasta_musait_gunleri_gorur(self):
+        self.giris(1)
+        sayfa = self.istemci.get("/panel?h=0&k=0&d=0&s=0").get_data(as_text=True)
+        self.assertIn("28.10.2026", sayfa)
+        self.assertIn("12 boş", sayfa)
+
+    def test_doktor_takvimi(self):
+        self.giris(3)
+        sayfa = self.istemci.get("/panel").get_data(as_text=True)
+        self.assertIn("Takvimim", sayfa)
+        self.assertIn("slot bos", sayfa)
+
+    def test_doktor_musaitlik_ekler_ve_siler(self):
+        self.giris(3)
+        doktor = uygulama_modulu.uyg.doktorlar()[0]
+        onceki = len(doktor.musaitlik)
+        self.istemci.post("/doktor/musaitlik", data={
+            "baslangic": "2026-11-05T09:00", "bitis": "2026-11-05T12:00"})
+        self.assertEqual(len(doktor.musaitlik), onceki + 1)
+        sayfa = self.istemci.get("/panel").get_data(as_text=True)
+        self.assertIn("05.11.2026", sayfa)
+        self.istemci.post(f"/doktor/musaitlik-sil/{onceki}")
+        self.assertEqual(len(doktor.musaitlik), onceki)
+
     def test_yetkisiz_islem_engellenir(self):
         self.giris(1)       # hasta, admin işlemi dener
         self.istemci.post("/admin/hastane", data={"ad": "X", "acilis": "08:00", "kapanis": "17:00"})

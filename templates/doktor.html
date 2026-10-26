@@ -20,7 +20,42 @@
   {% else %}<tr><td colspan="6">Randevu yok.</td></tr>{% endfor %}
 </table>
 
-<h2>Müsaitlik Ekle</h2>
+<h2>Takvimim <small>(🟢 boş · 🔴 dolu)</small></h2>
+{% if secenekler %}
+<form method="get" class="kutu">
+  Saat adımı için seçin:
+  <select name="x" onchange="this.form.submit()">
+    {% for h, k, s in secenekler %}
+    <option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == secili }}>{{ h.ad }} / {{ k.ad }} / {{ s.ad }} ({{ s.sure_dk }} dk)</option>
+    {% endfor %}
+  </select>
+</form>
+{% for gun, slotlar in takvim %}
+  <h3>{{ gun.strftime('%d.%m.%Y') }}</h3>
+  {% for slot in slotlar %}
+    {% if slot.dolu %}
+      <span class="slot dolu" title="{{ slot.randevu.hasta.tam_ad }} ({{ slot.randevu.durum.value }})">
+        {{ slot.baslangic.strftime('%H:%M') }} · {{ slot.randevu.hasta.tam_ad }}</span>
+    {% else %}
+      <span class="slot bos">{{ slot.baslangic.strftime('%H:%M') }}</span>
+    {% endif %}
+  {% else %}<p>Bu gün için hastane saatleriyle uyumlu slot yok.</p>{% endfor %}
+{% else %}<p>Henüz müsaitlik tanımlamadınız.</p>{% endfor %}
+{% else %}<p>Önce bir kliniğe atanmanız ve klinikte hizmet tanımlı olması gerekir.</p>{% endif %}
+
+<h2>Müsaitliklerim</h2>
+<table>
+  <tr><th>Tarih</th><th>Başlangıç</th><th>Bitiş</th><th>İşlem</th></tr>
+  {% for sira, (b, s) in musaitlikler %}
+  <tr>
+    <td>{{ b.strftime('%d.%m.%Y') }}</td><td>{{ b.strftime('%H:%M') }}</td><td>{{ s.strftime('%H:%M') }}</td>
+    <td><form class="satir" method="post" action="{{ url_for('doktor_musaitlik_sil', sira=sira) }}"
+              onsubmit="return confirm('Bu müsaitlik silinsin mi?')"><button>Sil</button></form></td>
+  </tr>
+  {% else %}<tr><td colspan="4">Tanımlı müsaitliğiniz yok.</td></tr>{% endfor %}
+</table>
+
+<h3>Yeni Müsaitlik Ekle</h3>
 <form method="post" action="{{ url_for('doktor_musaitlik') }}" class="kutu">
   Başlangıç <input type="datetime-local" name="baslangic" required>
   Bitiş <input type="datetime-local" name="bitis" required>

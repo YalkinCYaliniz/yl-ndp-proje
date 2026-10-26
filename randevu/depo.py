@@ -92,7 +92,7 @@ class Depo:
         else:
             kisi = Doktor(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
         for baslangic, bitis in k["musaitlik"]:
-            kisi.musaitlik_ekle(datetime.fromisoformat(baslangic), datetime.fromisoformat(bitis))
+            kisi.musaitlik_yukle(datetime.fromisoformat(baslangic), datetime.fromisoformat(bitis))
         return kisi
 
     def _hizmet_olustur(self, s: dict):

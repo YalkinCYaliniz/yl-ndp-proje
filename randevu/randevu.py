@@ -90,9 +90,10 @@ class Randevu:
 class Slot:
     """Tablodaki tek bir saat kutusu. Boşsa yeşil, doluysa kırmızı gösterilecek."""
 
-    def __init__(self, baslangic, dolu: bool):
+    def __init__(self, baslangic, dolu: bool, randevu=None):
         self.baslangic = baslangic
         self.dolu = dolu
+        self.randevu = randevu          # doluysa hangi randevu olduğu
 
     @property
     def renk(self) -> str:
@@ -129,11 +130,24 @@ class RandevuSistemi:
         return [r for r in self.doktorun_randevulari(doktor)
                 if r.durum == RandevuDurumu.BEKLIYOR]
 
-    def _dolu_mu(self, doktor, baslangic, bitis) -> bool:
+    def _cakisan_randevu(self, doktor, baslangic, bitis):
+        """Aralıkla çakışan randevuyu döndürür, yoksa None."""
         for r in self._randevular:
             if r.doktor is doktor and r.cakisiyor_mu(baslangic, bitis):
-                return True
-        return False
+                return r
+        return None
+
+    def _dolu_mu(self, doktor, baslangic, bitis) -> bool:
+        return self._cakisan_randevu(doktor, baslangic, bitis) is not None
+
+    def musait_gunler(self, hastane, doktor, hizmet) -> list:
+        """Doktorun çalıştığı günler ve her günün boş saat sayısı: [(date, bos_sayisi)]."""
+        gunler = sorted({baslangic.date() for baslangic, _ in doktor.musaitlik})
+        sonuc = []
+        for gun in gunler:
+            slotlar = self.saat_tablosu(hastane, doktor, hizmet, gun)
+            sonuc.append((gun, len([s for s in slotlar if not s.dolu])))
+        return sonuc
 
     def saat_tablosu(self, hastane, doktor, hizmet, gun) -> list:
         """Doktorun o günkü tüm saatleri (boş/dolu). Frontend bunu tablo yapacak."""
@@ -143,7 +157,8 @@ class RandevuSistemi:
             zaman = baslangic
             while zaman + sure <= bitis:
                 if hastane.acik_mi(zaman, zaman + sure):
-                    slotlar.append(Slot(zaman, self._dolu_mu(doktor, zaman, zaman + sure)))
+                    randevu = self._cakisan_randevu(doktor, zaman, zaman + sure)
+                    slotlar.append(Slot(zaman, randevu is not None, randevu))
                 zaman += sure
         return slotlar
 

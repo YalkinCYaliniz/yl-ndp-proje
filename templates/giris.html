@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block icerik %}
+<h2>Giriş yapılacak kullanıcıyı seçin</h2>
+<p>Bu bir demo girişidir; şifre yoktur.</p>
+{% for k in kullanicilar %}
+  <div class="kutu"><a href="{{ url_for('giris_yap', sira=loop.index0) }}">{{ k }}</a>
+  <span class="etiket">{{ k.yetkiler() | join(', ') }}</span></div>
+{% endfor %}
+{% endblock %}

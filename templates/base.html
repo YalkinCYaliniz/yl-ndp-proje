@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>Hastane Randevu Sistemi</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 24px auto; padding: 0 16px; color: #222; }
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0a7; padding-bottom: 8px; }
+    h1 { margin: 0; font-size: 1.3rem; } h2 { margin-top: 28px; }
+    .kutu { border: 1px solid #ccc; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+    .ok { background: #d9f7e4; padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+    .hata { background: #fde0e0; padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+    table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+    .slot { display: inline-block; margin: 3px; padding: 8px 12px; border: 0; border-radius: 6px; color: #fff; font-size: .95rem; }
+    .bos { background: #1a9f4b; cursor: pointer; } .dolu { background: #d33; opacity: .85; }
+    input, select, button { padding: 6px; margin: 2px; } form.satir { display: inline; }
+    .etiket { font-size: .8rem; background: #eee; border-radius: 10px; padding: 2px 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏥 Hastane Randevu Sistemi</h1>
+    {% if kullanici %}<div>{{ kullanici }} · <a href="{{ url_for('cikis') }}">Çıkış</a></div>{% endif %}
+  </header>
+  {% for kategori, mesaj in get_flashed_messages(with_categories=true) %}
+    <div class="{{ kategori }}">{{ mesaj }}</div>
+  {% endfor %}
+  {% block icerik %}{% endblock %}
+</body>
+</html>

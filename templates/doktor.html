@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block icerik %}
+<h2>Randevularım</h2>
+<table>
+  <tr><th>Tarih</th><th>Hastane / Klinik</th><th>Hasta</th><th>Hizmet</th><th>Durum</th><th>İşlem</th></tr>
+  {% for sira, r in randevular %}
+  <tr>
+    <td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td>
+    <td>{{ r.hastane.ad }} / {{ r.klinik.ad }}</td>
+    <td>{{ r.hasta.tam_ad }}</td>
+    <td>{{ r.hizmet.ad }}</td>
+    <td>{{ r.durum.value }}</td>
+    <td>
+      {% if r.durum.value == 'Bekliyor' %}
+      <form class="satir" method="post" action="{{ url_for('doktor_onayla', sira=sira) }}"><button>Onayla</button></form>
+      <form class="satir" method="post" action="{{ url_for('doktor_reddet', sira=sira) }}"><button>Reddet</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="6">Randevu yok.</td></tr>{% endfor %}
+</table>
+
+<h2>Müsaitlik Ekle</h2>
+<form method="post" action="{{ url_for('doktor_musaitlik') }}" class="kutu">
+  Başlangıç <input type="datetime-local" name="baslangic" required>
+  Bitiş <input type="datetime-local" name="bitis" required>
+  <button>Ekle</button>
+</form>
+<h3>Bağlı olduğum klinikler</h3>
+<ul>{% for k in kullanici.klinikler %}<li>{{ k.ad }}</li>{% endfor %}</ul>
+{% endblock %}

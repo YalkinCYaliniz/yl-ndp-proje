@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block icerik %}
+<h2>Randevu Al</h2>
+<form method="get" class="kutu">
+  <select name="h" onchange="this.form.submit()">
+    <option value="">Hastane seçin</option>
+    {% for h in hastaneler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('h') == loop.index0|string }}>{{ h.ad }} ({{ h.acilis.strftime('%H:%M') }}-{{ h.kapanis.strftime('%H:%M') }})</option>{% endfor %}
+  </select>
+  {% if secim.hastane %}
+  <select name="k" onchange="this.form.submit()">
+    <option value="">Klinik seçin</option>
+    {% for k in secim.hastane.klinikler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('k') == loop.index0|string }}>{{ k.ad }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  {% if secim.klinik %}
+  <select name="d" onchange="this.form.submit()">
+    <option value="">Doktor seçin</option>
+    {% for d in secim.klinik.doktorlar %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('d') == loop.index0|string }}>{{ d.tam_ad }} ({{ d.uzmanlik }})</option>{% endfor %}
+  </select>
+  <select name="s" onchange="this.form.submit()">
+    <option value="">Hizmet seçin</option>
+    {% for s in secim.klinik.hizmetler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('s') == loop.index0|string }}>{{ s.ad }} · {{ s.tur() }} · {{ s.sure_dk }} dk · {{ s.ucret }} TL</option>{% endfor %}
+  </select>
+  {% endif %}
+  {% if secim.doktor and secim.hizmet %}
+  <input type="date" name="tarih" value="{{ ara.get('tarih', '') }}" onchange="this.form.submit()">
+  {% endif %}
+  <noscript><button>Devam</button></noscript>
+</form>
+
+{% if secim.slotlar is not none %}
+  <h3>Saat Tablosu <small>(🟢 boş · 🔴 dolu)</small></h3>
+  {% if not secim.slotlar %}<p>Bu tarihte doktorun müsait saati yok.</p>{% endif %}
+  {% for slot in secim.slotlar %}
+    {% if slot.dolu %}
+      <span class="slot dolu">{{ slot.baslangic.strftime('%H:%M') }}</span>
+    {% else %}
+      <form class="satir" method="post" action="{{ url_for('randevu_al') }}">
+        <input type="hidden" name="h" value="{{ ara['h'] }}"><input type="hidden" name="k" value="{{ ara['k'] }}">
+        <input type="hidden" name="d" value="{{ ara['d'] }}"><input type="hidden" name="s" value="{{ ara['s'] }}">
+        <input type="hidden" name="zaman" value="{{ slot.baslangic.isoformat() }}">
+        <button class="slot bos">{{ slot.baslangic.strftime('%H:%M') }}</button>
+      </form>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
+<h2>Randevularım</h2>
+<table>
+  <tr><th>Tarih</th><th>Hastane / Klinik</th><th>Doktor</th><th>Hizmet</th><th>Ücret</th><th>Durum</th><th>İşlem</th></tr>
+  {% for sira, r in randevular %}
+  <tr>
+    <td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td>
+    <td>{{ r.hastane.ad }} / {{ r.klinik.ad }}</td>
+    <td>{{ r.doktor.tam_ad }}</td>
+    <td>{{ r.hizmet.ad }}</td>
+    <td>{{ r.hizmet.ucret }} TL{% if r.odendi_mi %}<br><small>Ödendi: {{ r.odenen_tutar }} TL</small>{% endif %}</td>
+    <td>{{ r.durum.value }}</td>
+    <td>
+      {% if r.aktif_mi %}
+      <form class="satir" method="post" action="{{ url_for('hasta_iptal', sira=sira) }}"><button>İptal et</button></form>
+      {% endif %}
+      {% if r.durum.value == 'Onaylandı' and not r.odendi_mi %}
+      <form class="satir" method="post" action="{{ url_for('hasta_odeme', sira=sira) }}">
+        <select name="yontem"><option value="nakit">Nakit</option><option value="kart">Kart (3 taksit)</option><option value="sigorta">Sigorta</option></select>
+        <button>Öde</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="7">Henüz randevunuz yok.</td></tr>{% endfor %}
+</table>
+{% endblock %}

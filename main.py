@@ -3,6 +3,7 @@ from datetime import date, datetime, time
 from randevu.kullanici import Hasta, Doktor, Yonetici, Hemsire, Teknisyen
 from randevu.kurum import Kurum, Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import RandevuSistemi
+from randevu.odeme import NakitOdeme, KartOdeme, SigortaOdeme
 from randevu.hatalar import YetkiHatasi, RandevuHatasi
 
 
@@ -45,6 +46,10 @@ def main():
     doktor.randevu_onayla(r)
     print("Onay bekleyenler:", len(sistem.bekleyen_randevular(doktor)))
     print(r)
+    # Çok biçimlilik: aynı hizmet ücreti, her ödeme yönteminde farklı toplam
+    for odeme in (NakitOdeme(), KartOdeme(taksit=3), SigortaOdeme()):
+        print(f"  {odeme.yontem()}: {odeme.toplam_hesapla(r.hizmet.ucret)} TL")
+    print("Ödenen:", r.odeme_yap(KartOdeme(taksit=3)), "TL")
     print(hemsire.hasta_kabul(r))
     print(teknisyen.tetkik_yap(r))
 

@@ -28,6 +28,24 @@ class Randevu:
         self.hizmet = hizmet
         self.baslangic = baslangic          # datetime
         self._durum = RandevuDurumu.BEKLIYOR
+        self._odenen_tutar = None           # ödeme yapılınca dolar
+
+    @property
+    def odendi_mi(self) -> bool:
+        return self._odenen_tutar is not None
+
+    @property
+    def odenen_tutar(self):
+        return self._odenen_tutar
+
+    def odeme_yap(self, odeme) -> float:
+        """Onaylı randevu için seçilen yönteme göre ödeme alır (çok biçimlilik)."""
+        if self._durum != RandevuDurumu.ONAYLANDI:
+            raise RandevuHatasi("Sadece onaylı randevu için ödeme yapılabilir.")
+        if self.odendi_mi:
+            raise RandevuHatasi("Bu randevunun ödemesi zaten yapılmış.")
+        self._odenen_tutar = odeme.toplam_hesapla(self.hizmet.ucret)
+        return self._odenen_tutar
 
     @property
     def bitis(self):

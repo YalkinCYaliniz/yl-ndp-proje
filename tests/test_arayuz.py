@@ -8,6 +8,7 @@ from randevu.uygulama import ornek_veri
 class ArayuzTest(unittest.TestCase):
     def setUp(self):
         uygulama_modulu.uyg = ornek_veri()      # her testte temiz veri
+        uygulama_modulu.depo = None             # testler dosyaya yazmasın
         self.istemci = uygulama_modulu.app.test_client()
 
     def giris(self, sira):

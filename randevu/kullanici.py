@@ -35,6 +35,11 @@ class Kullanici(ABC):
     def yetkiler(self) -> list[str]:
         """Rolün yapabildiği işlemler (alt sınıflar ezer)."""
 
+    def sozluge(self) -> dict:
+        """Kaydetmek için sözlüğe çevirir (alt sınıflar ekleme yapar)."""
+        return {"tur": type(self).__name__, "ad": self.ad,
+                "soyad": self.soyad, "tc_no": self.tc_no}
+
     def yetki_var_mi(self, islem: str) -> bool:
         return islem in self.yetkiler()
 
@@ -115,6 +120,16 @@ class SaglikPersoneli(Kullanici):
             sonuc.extend(klinik.hizmetler)
         return sonuc
 
+    @property
+    def musaitlik(self) -> tuple:
+        return tuple(self._musaitlik)
+
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["uzmanlik"] = self.uzmanlik
+        veri["musaitlik"] = [[b.isoformat(), s.isoformat()] for b, s in self._musaitlik]
+        return veri
+
     def musaitlik_ekle(self, baslangic, bitis) -> None:
         """Çalışılan zaman aralığı (datetime). Örn: 14.10.2026 09:00 - 12:00"""
         if baslangic >= bitis:
@@ -166,6 +181,11 @@ class Teknisyen(SaglikPersoneli):
 
     def yetkiler(self) -> list[str]:
         return super().yetkiler() + ["tetkik_yap"]
+
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["cihaz"] = self.cihaz
+        return veri
 
     def tetkik_yap(self, randevu) -> str:
         self._yetki_kontrol("tetkik_yap")

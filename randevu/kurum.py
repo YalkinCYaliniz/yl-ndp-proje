@@ -25,6 +25,11 @@ class Hizmet(ABC):
     def ucret(self) -> float:
         return self.ucret_hesapla()
 
+    def sozluge(self) -> dict:
+        """Kaydetmek için sözlüğe çevirir (alt sınıflar ekleme yapar)."""
+        return {"tur": type(self).__name__, "ad": self.ad,
+                "sure_dk": self.sure_dk, "taban_ucret": self._taban_ucret}
+
 
 class Muayene(Hizmet):
     def tur(self) -> str:
@@ -41,6 +46,11 @@ class Radyoloji(Hizmet):
     def tur(self) -> str:
         return "Radyoloji"
 
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["cihaz_ucreti"] = self._cihaz_ucreti
+        return veri
+
     def ucret_hesapla(self, indirim_orani: float = 0.0) -> float:   # overriding
         return (self._taban_ucret + self._cihaz_ucreti) * (1 - indirim_orani)
 
@@ -54,6 +64,11 @@ class Laboratuvar(Hizmet):
 
     def tur(self) -> str:
         return "Laboratuvar"
+
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["tahlil_sayisi"] = self._tahlil_sayisi
+        return veri
 
     def ucret_hesapla(self, indirim_orani: float = 0.0) -> float:   # overriding
         return self._taban_ucret * self._tahlil_sayisi * (1 - indirim_orani)

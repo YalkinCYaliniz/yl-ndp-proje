@@ -7,11 +7,14 @@ from randevu.hatalar import SistemHatasi
 from randevu.kullanici import Hasta, Doktor, Yonetici
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.odeme import NakitOdeme, KartOdeme, SigortaOdeme
+from randevu.depo import Depo
 from randevu.uygulama import ornek_veri
 
 app = Flask(__name__)
 app.secret_key = "ndp-proje-gelistirme"
-uyg = ornek_veri()          # veriler bellekte tutulur (JSON kaydı sonraki adım)
+depo = Depo("veri.json")
+# Kayıt dosyası varsa oradan yükle, yoksa örnek veriyle başla
+uyg = depo.yukle() if depo.var_mi() else ornek_veri()
 
 ODEMELER = {"nakit": NakitOdeme(), "kart": KartOdeme(3), "sigorta": SigortaOdeme()}
 
@@ -32,6 +35,8 @@ def calistir(islem, basari: str):
     """İşlemi dener; SistemHatasi olursa kullanıcıya mesaj gösterir."""
     try:
         islem()
+        if depo:
+            depo.kaydet(uyg)        # her başarılı işlemden sonra dosyaya yaz
         flash(basari, "ok")
     except (SistemHatasi, ValueError, IndexError, KeyError) as hata:
         flash(str(hata) or "Geçersiz seçim.", "hata")

@@ -20,15 +20,17 @@ def tarih_saat_yaz(zaman) -> str:
 class Randevu:
     """Tek bir randevu: hasta, hastane, klinik, doktor, hizmet ve tarih-saat."""
 
-    def __init__(self, hasta, hastane, klinik, doktor, hizmet, baslangic):
+    def __init__(self, hasta, hastane, klinik, doktor, hizmet, baslangic,
+                 durum=None, odenen_tutar=None):
         self.hasta = hasta
         self.hastane = hastane
         self.klinik = klinik
         self.doktor = doktor
         self.hizmet = hizmet
         self.baslangic = baslangic          # datetime
-        self._durum = RandevuDurumu.BEKLIYOR
-        self._odenen_tutar = None           # ödeme yapılınca dolar
+        # Yeni randevu bekler; dosyadan yüklenirken durum ve ödeme verilir
+        self._durum = durum or RandevuDurumu.BEKLIYOR
+        self._odenen_tutar = odenen_tutar   # ödeme yapılınca dolar
 
     @property
     def odendi_mi(self) -> bool:
@@ -110,6 +112,10 @@ class RandevuSistemi:
     @property
     def randevular(self) -> tuple:
         return tuple(self._randevular)
+
+    def randevu_yukle(self, randevu) -> None:
+        """Dosyadan okunan randevuyu kural kontrolü yapmadan ekler."""
+        self._randevular.append(randevu)
 
     def hastanin_randevulari(self, hasta) -> list:
         """Hastanın tüm randevuları (geçmiş dahil, iptaller de görünür)."""

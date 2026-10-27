@@ -47,6 +47,12 @@ class DepoTest(unittest.TestCase):
         dahiliye = yeni.kurum.hastane_bul("Merkez Hastane").klinik_bul("Dahiliye")
         self.assertEqual([p.rol() for p in dahiliye.personeller], ["Asistan", "Hemşire"])
 
+    def test_birden_fazla_asistan_korunur(self):
+        self.depo.kaydet(ornek_veri())
+        yeni = self.depo.yukle()
+        can = [k for k in yeni.kullanicilar if k.tam_ad == "Can Öztürk"][0]
+        self.assertEqual([a.tam_ad for a in can.asistanlar], ["Burak Şen", "Derya Kurt"])
+
     def test_ayni_tc_iki_kez_kaydedilemez(self):
         uyg = ornek_veri()
         with self.assertRaises(SistemHatasi):

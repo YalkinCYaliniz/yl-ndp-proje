@@ -67,10 +67,11 @@ def ornek_veri() -> Uygulama:
     kemal = Hasta("Kemal", "Tunç", "90000000017")
     selma = Hasta("Selma", "Bulut", "90000000018")
     oguz = Hasta("Oğuz", "Eren", "90000000019")
+    derya = Asistan("Derya", "Kurt", "90000000020")     # Can'ın ikinci asistanı
 
     for k in (admin, ali, veli, ayse, can, elif_, zeynep, seda, selin, murat, deniz, burcu,
               emre, hakan, aylin, burak, gizem, okan, merve, hatice, can_er, ece,
-              ayten, kemal, selma, oguz):
+              ayten, kemal, selma, oguz, derya):
         uyg.kullanici_ekle(k)
 
     # ---------------- Hastaneler ve klinikler ----------------
@@ -127,7 +128,7 @@ def ornek_veri() -> Uygulama:
     # ---------------- Personel -> klinik atamaları ----------------
     atamalar = [
         (dahiliye, [ayse, elif_, zeynep]),
-        (kardiyoloji, [ayse, can, burak]),
+        (kardiyoloji, [ayse, can, burak, derya]),
         (goz, [selin]),
         (radyoloji, [murat, can_er]),
         (k_dahiliye, [deniz]),
@@ -143,7 +144,8 @@ def ornek_veri() -> Uygulama:
             admin.personel_ata(kl, kisi)
 
     # ---------------- Asistan -> doktor bağlantıları ----------------
-    for asistan, doktor in ((elif_, ayse), (burak, can), (gizem, burcu), (okan, aylin)):
+    for asistan, doktor in ((elif_, ayse), (burak, can), (derya, can), (gizem, burcu),
+                           (okan, aylin)):
         admin.asistan_bagla(asistan, doktor)
 
     # ---------------- Doktor çalışma günleri ----------------

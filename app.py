@@ -65,9 +65,16 @@ def giris():
     if secili in GRUPLAR:
         sinif = GRUPLAR[secili][1]
         liste = [(sira, k) for sira, k in enumerate(uyg.kullanicilar) if isinstance(k, sinif)]
-        if secili == "personel":        # önce doktorlar, sonra asistan, hemşire, teknisyen
-            liste.sort(key=lambda cift: ROL_SIRASI.index(cift[1].rol()))
+    kategoriler = []
+    secili_rol = request.args.get("rol", "")
+    if secili == "personel":
+        # Kategori seçici: Doktor / Asistan / Hemşire / Teknisyen
+        kategoriler = [(rol, len([k for _, k in liste if k.rol() == rol])) for rol in ROL_SIRASI]
+        liste.sort(key=lambda cift: ROL_SIRASI.index(cift[1].rol()))
+        if secili_rol in ROL_SIRASI:
+            liste = [(sira, k) for sira, k in liste if k.rol() == secili_rol]
     return render_template("giris.html", gruplar=gruplar, secili=secili, liste=liste,
+                           kategoriler=kategoriler, secili_rol=secili_rol,
                            baslik=GRUPLAR[secili][0] if secili in GRUPLAR else "")
 
 
@@ -306,6 +313,17 @@ def admin_asistan_bagla():
         simdiki_kullanici().asistan_bagla(asistanlar[int(f["asistan"])],
                                           uyg.doktorlar()[int(f["doktor"])])
     calistir(islem, "Asistan doktora bağlandı.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/asistan-ayir")
+def admin_asistan_ayir():
+    f = request.form
+
+    def islem():
+        asistanlar = [p for p in personeller() if isinstance(p, Asistan)]
+        simdiki_kullanici().asistan_ayir(asistanlar[int(f["asistan"])])
+    calistir(islem, "Asistan doktordan ayrıldı.")
     return redirect(url_for("panel"))
 
 

@@ -172,6 +172,8 @@ class SaglikPersoneli(Kullanici):
 
 
 class Doktor(SaglikPersoneli):
+    MAX_ASISTAN = 3         # bir doktora en fazla bu kadar asistan bağlanabilir
+
     def __init__(self, ad, soyad, tc_no, uzmanlik: str):
         super().__init__(ad, soyad, tc_no, uzmanlik)
         self._asistanlar = []
@@ -185,6 +187,10 @@ class Doktor(SaglikPersoneli):
     @property
     def asistanlar(self) -> tuple:
         return tuple(self._asistanlar)
+
+    @property
+    def asistan_kapasitesi_dolu_mu(self) -> bool:
+        return len(self._asistanlar) >= self.MAX_ASISTAN
 
     @property
     def asistan_metni(self) -> str:
@@ -230,6 +236,9 @@ class Asistan(SaglikPersoneli):
         ortak = [k for k in self._klinikler if doktor in k.doktorlar]
         if not ortak:
             raise SistemHatasi("Asistan ve doktor ortak bir klinikte olmalı.")
+        if doktor.asistan_kapasitesi_dolu_mu:      # önce kontrol: hata olursa eski bağlantı bozulmaz
+            raise SistemHatasi(
+                f"{doktor.tam_ad} en fazla {Doktor.MAX_ASISTAN} asistana sahip olabilir.")
         self.doktordan_ayril()
         doktor._asistan_baglandi(self)
         self._doktor = doktor
@@ -311,6 +320,11 @@ class Yonetici(Kullanici):
         """Asistanı doktora bağlar veya başka doktora taşır."""
         self._yetki_kontrol("asistan_bagla")
         asistan.doktora_bagla(doktor)
+
+    def asistan_ayir(self, asistan) -> None:
+        """Asistanı bağlı olduğu doktordan ayırır."""
+        self._yetki_kontrol("asistan_bagla")
+        asistan.doktordan_ayril()
 
     def hastane_ekle(self, kurum, hastane) -> None:
         self._yetki_kontrol("hastane_ekle")

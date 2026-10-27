@@ -4,7 +4,7 @@
   <div class="kart"><b>Kliniklerim</b>
     {% for k in kullanici.klinikler %}<span class="etiket">{{ k.ad }}</span>{% else %}-{% endfor %}</div>
   <div class="kart"><b>Asistanlarım</b>
-    {% for a in kullanici.asistanlar %}<span class="etiket">🧑‍⚕️ {{ a.tam_ad }}</span>{% else %}Henüz asistanınız yok.{% endfor %}</div>
+    {% for a in kullanici.asistanlar %}<span class="etiket">{{ a.tam_ad }}</span>{% else %}Henüz asistanınız yok.{% endfor %}</div>
 </div>
 
 <h2>Randevularım</h2>
@@ -27,7 +27,7 @@
   {% else %}<tr><td colspan="6">Randevu yok.</td></tr>{% endfor %}
 </table>
 
-<h2>Takvimim <small>(🟢 boş · 🔴 dolu)</small></h2>
+<h2>Takvimim <small>(yeşil: boş, kırmızı: dolu)</small></h2>
 {% if secenekler %}
 <form method="get" class="kart">
   Saat adımı için seçin:

@@ -108,6 +108,45 @@ class AsistanTest(TemelTest):
         self.assertEqual(self.doktor.asistan_metni, "")
         self.assertEqual(self.diger.asistanlar, (self.asistan,))
 
+    def test_bir_doktorun_birden_fazla_asistani_olur(self):
+        ikinci = Asistan("Derya", "Kurt", "99999999999")
+        for a in (self.asistan, ikinci):
+            self.admin.personel_ata(self.dahiliye, a)
+            self.admin.asistan_bagla(a, self.doktor)
+        self.assertEqual(self.doktor.asistanlar, (self.asistan, ikinci))
+        self.assertEqual(self.doktor.asistan_metni, "Asistan: Elif Aydın, Derya Kurt")
+
+    def test_asistan_kapasitesi(self):
+        asistanlar = [Asistan(f"A{i}", "Test", f"7000000000{i}") for i in range(Doktor.MAX_ASISTAN + 1)]
+        for a in asistanlar[:-1]:
+            self.admin.personel_ata(self.dahiliye, a)
+            self.admin.asistan_bagla(a, self.doktor)
+        self.assertTrue(self.doktor.asistan_kapasitesi_dolu_mu)
+        fazla = asistanlar[-1]
+        self.admin.personel_ata(self.dahiliye, fazla)
+        with self.assertRaises(SistemHatasi):
+            self.admin.asistan_bagla(fazla, self.doktor)
+
+    def test_dolu_doktora_tasima_eski_baglantiyi_bozmaz(self):
+        self.admin.personel_ata(self.dahiliye, self.asistan)
+        self.admin.personel_ata(self.kardiyoloji, self.asistan)
+        self.admin.asistan_bagla(self.asistan, self.diger)
+        for i in range(Doktor.MAX_ASISTAN):
+            a = Asistan(f"B{i}", "Test", f"6000000000{i}")
+            self.admin.personel_ata(self.dahiliye, a)
+            self.admin.asistan_bagla(a, self.doktor)
+        with self.assertRaises(SistemHatasi):
+            self.admin.asistan_bagla(self.asistan, self.doktor)
+        self.assertIs(self.asistan.doktor, self.diger)      # hâlâ eski doktorda
+
+    def test_asistan_ayirma(self):
+        self.admin.personel_ata(self.dahiliye, self.asistan)
+        self.admin.asistan_bagla(self.asistan, self.doktor)
+        self.admin.asistan_ayir(self.asistan)
+        self.assertIsNone(self.asistan.doktor)
+        self.assertEqual(self.doktor.asistanlar, ())
+        self.assertFalse(self.hasta.yetki_var_mi("asistan_bagla"))   # hasta bu işlemi yapamaz
+
     def test_hasta_hazirla_sadece_bagli_doktor(self):
         self.admin.personel_ata(self.dahiliye, self.asistan)
         self.admin.asistan_bagla(self.asistan, self.doktor)

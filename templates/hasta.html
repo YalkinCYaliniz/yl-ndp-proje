@@ -24,13 +24,13 @@
   {% endif %}
   <noscript><button>Devam</button></noscript>
   {% if secim.doktor %}
-  <div class="bilgi">👨‍⚕️ <b>{{ secim.doktor.tam_ad }}</b> — {{ secim.doktor.uzmanlik }}
-    {% if secim.doktor.asistanlar %} · 🧑‍⚕️ {{ secim.doktor.asistan_metni }}{% endif %}</div>
+  <div class="bilgi"><b>{{ secim.doktor.tam_ad }}</b> — {{ secim.doktor.uzmanlik }}
+    {% if secim.doktor.asistanlar %} ·  {{ secim.doktor.asistan_metni }}{% endif %}</div>
   {% endif %}
 </form>
 
 {% if secim.gunler is not none %}
-  <h3>Müsait Günler <small>(🟢 boş yer var · 🔴 tamamen dolu)</small></h3>
+  <h3>Müsait Günler <small>(yeşil: boş yer var, kırmızı: tamamen dolu)</small></h3>
   {% if not secim.gunler %}<p>Doktorun tanımlı müsaitliği yok.</p>{% endif %}
   {% for gun, bos in secim.gunler %}
     {% set iso = gun.isoformat() %}
@@ -42,7 +42,7 @@
 {% endif %}
 
 {% if secim.slotlar is not none %}
-  <h3>Saat Tablosu <small>(🟢 boş · 🔴 dolu)</small></h3>
+  <h3>Saat Tablosu <small>(yeşil: boş, kırmızı: dolu)</small></h3>
   {% if not secim.slotlar %}<p>Bu tarihte doktorun müsait saati yok.</p>{% endif %}
   {% for slot in secim.slotlar %}
     {% if slot.dolu %}

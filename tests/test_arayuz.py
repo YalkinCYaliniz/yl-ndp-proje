@@ -82,6 +82,19 @@ class ArayuzTest(unittest.TestCase):
         self.istemci.post("/admin/asistan-bagla", data={"asistan": asistan_sira, "doktor": doktor_sira})
         self.assertIs(asistan.doktor, can)
 
+    def test_admin_asistani_ayirir(self):
+        self.giris(0)
+        uyg = uygulama_modulu.uyg
+        elif_ = uyg.kullanicilar[5]
+        asistanlar = [p for p in uygulama_modulu.personeller() if isinstance(p, type(elif_))]
+        self.istemci.post("/admin/asistan-ayir", data={"asistan": asistanlar.index(elif_)})
+        self.assertIsNone(elif_.doktor)
+
+    def test_hasta_birden_fazla_asistani_gorur(self):
+        self.giris(1)
+        sayfa = self.istemci.get("/panel?h=0&k=1&d=1").get_data(as_text=True)    # Merkez/Kardiyoloji/Can
+        self.assertIn("Asistan: Burak Şen, Derya Kurt", sayfa)
+
     def test_admin_personel_kaydeder_ve_ayni_tc_reddedilir(self):
         self.giris(0)
         veri = {"tur": "asistan", "ad": "Yeni", "soyad": "Asistan", "tc": "99999999999"}
@@ -106,6 +119,26 @@ class ArayuzTest(unittest.TestCase):
         sayfa = self.istemci.get("/").get_data(as_text=True)
         for baslik in ("Admin", "Personeller", "Kullanıcılar"):
             self.assertIn(baslik, sayfa)
+
+    def test_personel_kategori_secimi(self):
+        asistan = self.istemci.get("/?grup=personel&rol=Asistan").get_data(as_text=True)
+        self.assertIn("Elif Aydın", asistan)
+        self.assertNotIn('href="/giris/3"', asistan)      # Ayşe (doktor) listede yok
+        self.assertNotIn("Zeynep Acar", asistan)
+        doktor = self.istemci.get("/?grup=personel&rol=Doktor").get_data(as_text=True)
+        self.assertIn('href="/giris/3"', doktor)
+        self.assertNotIn('href="/giris/5"', doktor)       # Elif (asistan) listede yok
+        for rol in ("Hemşire", "Teknisyen"):
+            self.assertIn(f'value="{rol}"', self.istemci.get("/?grup=personel").get_data(as_text=True))
+
+    def test_hicbir_sayfada_emoji_yok(self):
+        import re
+        emoji = re.compile("[\U0001F000-\U0001FFFF\u2600-\u27BF\uFE0F\u200D]")
+        for yol in ("/", "/?grup=personel", "/?grup=admin", "/?grup=kullanici"):
+            self.assertIsNone(emoji.search(self.istemci.get(yol).get_data(as_text=True)))
+        for sira in (0, 1, 3, 5):
+            self.giris(sira)
+            self.assertIsNone(emoji.search(self.istemci.get("/panel").get_data(as_text=True)))
 
     def test_grup_listeleri(self):
         admin = self.istemci.get("/?grup=admin").get_data(as_text=True)

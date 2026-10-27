@@ -42,17 +42,20 @@
   <select name="asistan">{% for a in asistanlar %}<option value="{{ loop.index0 }}">{{ a.tam_ad }}{{ ' (şu an: ' ~ a.doktor.tam_ad ~ ')' if a.doktor }}</option>{% endfor %}</select><br>
   <select name="doktor">{% for d in doktorlar %}<option value="{{ loop.index0 }}">{{ d.tam_ad }} ({{ d.uzmanlik }})</option>{% endfor %}</select>
   <button>Bağla</button></form>
-  <small>Asistan ve doktor ortak bir klinikte olmalı.</small></div>
+  <small>Asistan ve doktor ortak bir klinikte olmalı. Bir doktorun en fazla 3 asistanı olabilir.</small>
+  <form method="post" action="{{ url_for('admin_asistan_ayir') }}" style="margin-top:10px">
+    <select name="asistan">{% for a in asistanlar %}<option value="{{ loop.index0 }}">{{ a.tam_ad }}{{ ' (' ~ a.doktor.tam_ad ~ ')' if a.doktor }}</option>{% endfor %}</select>
+    <button class="tehlike">Doktordan ayır</button></form></div>
 </div>
 
 <h2>Yapı</h2>
 {% for h in hastaneler %}
-<div class="kart"><b>🏥 {{ h.ad }} <small>({{ h.acilis.strftime('%H:%M') }}-{{ h.kapanis.strftime('%H:%M') }})</small></b>
+<div class="kart"><b>{{ h.ad }} <small>({{ h.acilis.strftime('%H:%M') }}-{{ h.kapanis.strftime('%H:%M') }})</small></b>
   {% for k in h.klinikler %}
   <div style="margin:8px 0 8px 12px"><b>{{ k.ad }}</b><br>
-    {% for d in k.doktorlar %}<span class="etiket">👨‍⚕️ {{ d.tam_ad }}{{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</span>{% endfor %}
+    {% for d in k.doktorlar %}<span class="etiket">{{ d.tam_ad }}{{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</span>{% endfor %}
     {% for p in k.personeller %}<span class="etiket">{{ p.rol() }}: {{ p.tam_ad }}{{ ' → ' ~ p.doktor.tam_ad if p.doktor }}</span>{% endfor %}<br>
-    {% for s in k.hizmetler %}<span class="etiket">💊 {{ s.ad }} ({{ s.ucret }} TL)</span>{% else %}<small>Hizmet yok</small>{% endfor %}
+    {% for s in k.hizmetler %}<span class="etiket">{{ s.ad }} ({{ s.ucret }} TL)</span>{% else %}<small>Hizmet yok</small>{% endfor %}
   </div>
   {% endfor %}</div>
 {% endfor %}

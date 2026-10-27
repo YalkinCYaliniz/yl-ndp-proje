@@ -5,7 +5,6 @@
 <div class="izgara">
   {% for anahtar, ad, sayi in gruplar %}
   <a class="kart kullanici-kart grup {{ 'secili' if anahtar == secili }}" href="{{ url_for('giris', grup=anahtar) }}">
-    <div class="grup-ikon">{{ {'admin': '🛠️', 'personel': '🩺', 'kullanici': '🧑'}[anahtar] }}</div>
     <div class="ad">{{ ad }}</div>
     <small>{{ sayi }} kişi</small>
   </a>
@@ -14,6 +13,20 @@
 
 {% if secili %}
 <h2>{{ baslik }}</h2>
+{% if kategoriler %}
+<form method="get" class="kart">
+  <input type="hidden" name="grup" value="personel">
+  <label>Kategori:
+    <select name="rol" onchange="this.form.submit()">
+      <option value="">Tümü</option>
+      {% for rol, sayi in kategoriler %}
+      <option value="{{ rol }}" {{ 'selected' if rol == secili_rol }}>{{ rol }} ({{ sayi }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button>Listele</button></noscript>
+</form>
+{% endif %}
 <div class="izgara">
   {% for sira, k in liste %}
   <a class="kart kullanici-kart" href="{{ url_for('giris_yap', sira=sira) }}">
@@ -23,8 +36,8 @@
     {% if k.klinikler is defined %}
     <div style="margin-top:8px">
       {% for kl in k.klinikler %}<span class="etiket">{{ kl.ad }}</span>{% endfor %}
-      {% if k.doktor is defined and k.doktor %}<span class="etiket">👨‍⚕️ {{ k.doktor.tam_ad }}</span>{% endif %}
-      {% if k.asistan_metni is defined and k.asistan_metni %}<span class="etiket">🧑‍⚕️ {{ k.asistan_metni }}</span>{% endif %}
+      {% if k.doktor is defined and k.doktor %}<span class="etiket">{{ k.doktor.tam_ad }}</span>{% endif %}
+      {% if k.asistan_metni is defined and k.asistan_metni %}<span class="etiket">{{ k.asistan_metni }}</span>{% endif %}
     </div>
     {% endif %}
   </a>

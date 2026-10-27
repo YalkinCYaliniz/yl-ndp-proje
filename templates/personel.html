@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block icerik %}
 <div class="izgara">
-  <div class="kart"><b>Görevim</b><span class="rol">{{ kullanici.rol() }}</span> {{ kullanici.uzmanlik }}</div>
+  <div class="kart"><b>Görevim</b><span class="rol">{{ kullanici.rol() }}</span>{{ kullanici.uzmanlik }}</div>
   <div class="kart"><b>Kliniklerim</b>
     {% for k in kullanici.klinikler %}<span class="etiket">{{ k.ad }}</span>{% else %}Henüz bir kliniğe atanmadınız.{% endfor %}</div>
   {% if kullanici.rol() == 'Asistan' %}
   <div class="kart"><b>Bağlı olduğum doktor</b>
-    {% if doktor %}👨‍⚕️ {{ doktor.tam_ad }} <small>({{ doktor.uzmanlik }})</small>{% else %}Henüz bir doktora bağlı değilsiniz.{% endif %}</div>
+    {% if doktor %} {{ doktor.tam_ad }} <small>({{ doktor.uzmanlik }})</small>{% else %}Henüz bir doktora bağlı değilsiniz.{% endif %}</div>
   {% endif %}
 </div>
 <div>{% for y in kullanici.yetkiler() %}<span class="etiket">{{ y }}</span>{% endfor %}</div>

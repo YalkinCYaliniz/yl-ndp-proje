@@ -2,29 +2,67 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hastane Randevu Sistemi</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 24px auto; padding: 0 16px; color: #222; }
-    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0a7; padding-bottom: 8px; }
-    h1 { margin: 0; font-size: 1.3rem; } h2 { margin-top: 28px; }
-    .kutu { border: 1px solid #ccc; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
-    .ok { background: #d9f7e4; padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
-    .hata { background: #fde0e0; padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
-    table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-    .slot { display: inline-block; margin: 3px; padding: 8px 12px; border: 0; border-radius: 6px; color: #fff; font-size: .95rem; }
-    .bos { background: #1a9f4b; cursor: pointer; } .dolu { background: #d33; opacity: .85; }
-    input, select, button { padding: 6px; margin: 2px; } form.satir { display: inline; }
-    .etiket { font-size: .8rem; background: #eee; border-radius: 10px; padding: 2px 8px; }
+    :root { --ana: #0e7c86; --ana-koyu: #0a5c64; --acik: #e8f6f7; --yazi: #1f2d3d; --gri: #6b7a8c;
+            --yesil: #1f9d55; --kirmizi: #d64545; --sari: #e8a317; --kenar: #dde5ec; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; background: #f3f7fa; color: var(--yazi); }
+    nav { background: linear-gradient(135deg, var(--ana-koyu), var(--ana)); color: #fff; padding: 14px 28px;
+          display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+    nav .logo { font-size: 1.25rem; font-weight: 700; letter-spacing: .3px; }
+    nav .kisi { display: flex; align-items: center; gap: 12px; font-size: .92rem; }
+    nav a { color: #fff; text-decoration: none; background: rgba(255,255,255,.18); padding: 6px 14px; border-radius: 20px; }
+    nav a:hover { background: rgba(255,255,255,.32); }
+    main { max-width: 1040px; margin: 24px auto; padding: 0 18px 40px; }
+    h2 { margin: 30px 0 12px; font-size: 1.25rem; color: var(--ana-koyu); }
+    h3 { margin: 18px 0 8px; font-size: 1rem; color: var(--yazi); } small { color: var(--gri); font-weight: 400; }
+    .kart { background: #fff; border-radius: 12px; padding: 18px 20px; margin: 14px 0; box-shadow: 0 1px 4px rgba(20,40,60,.08); border: 1px solid var(--kenar); }
+    .kart > b:first-child { display: block; margin-bottom: 8px; color: var(--ana-koyu); }
+    .izgara { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+    .mesaj { padding: 11px 16px; border-radius: 10px; margin: 12px 0; font-weight: 500; }
+    .ok { background: #dff5e8; color: #14633a; border-left: 5px solid var(--yesil); }
+    .hata { background: #fde6e6; color: #8f2424; border-left: 5px solid var(--kirmizi); }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(20,40,60,.08); }
+    th { background: var(--acik); color: var(--ana-koyu); text-align: left; font-size: .85rem; text-transform: uppercase; letter-spacing: .4px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--kenar); vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+    input, select { padding: 8px 10px; border: 1px solid #c3cfda; border-radius: 8px; font-size: .92rem; background: #fff; margin: 3px 2px; }
+    input:focus, select:focus { outline: 2px solid var(--ana); border-color: var(--ana); }
+    button { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--ana); color: #fff; font-size: .9rem; cursor: pointer; margin: 3px 2px; }
+    button:hover { background: var(--ana-koyu); }
+    button.tehlike { background: var(--kirmizi); } button.tehlike:hover { background: #b03333; }
+    button.yesil { background: var(--yesil); } button.yesil:hover { background: #17793f; }
+    form.satir { display: inline; }
+    .slot { display: inline-block; margin: 4px; padding: 9px 14px; border-radius: 8px; color: #fff; font-size: .92rem; border: 0; text-decoration: none; }
+    .bos { background: var(--yesil); cursor: pointer; } .bos:hover { background: #17793f; }
+    .dolu { background: var(--kirmizi); opacity: .9; cursor: default; }
+    .rozet { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: .78rem; font-weight: 600; background: #e6ebf0; color: #455468; }
+    .rozet.bekliyor { background: #fdf0d2; color: #8a5d00; } .rozet.onaylandi { background: #dff5e8; color: #14633a; }
+    .rozet.reddedildi, .rozet.iptal { background: #fde6e6; color: #8f2424; }
+    .etiket { display: inline-block; font-size: .75rem; background: var(--acik); color: var(--ana-koyu); border-radius: 10px; padding: 2px 9px; margin: 2px 2px 2px 0; }
+    .asistan { color: var(--ana-koyu); font-size: .85rem; }
+    .kullanici-kart { display: block; text-decoration: none; color: inherit; transition: transform .12s, box-shadow .12s; }
+    .kullanici-kart:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(20,40,60,.14); }
+    .kullanici-kart .ad { font-weight: 700; font-size: 1.05rem; }
+    .rol { display: inline-block; font-size: .75rem; padding: 2px 10px; border-radius: 10px; background: var(--ana); color: #fff; margin-bottom: 6px; }
+    .grup { text-align: center; padding: 28px 20px; border: 2px solid transparent; }
+    .grup.secili { border-color: var(--ana); background: var(--acik); }
+    .grup-ikon { font-size: 2.4rem; margin-bottom: 6px; }
+    .bilgi { background: var(--acik); border-radius: 10px; padding: 10px 14px; margin: 10px 0; color: var(--ana-koyu); }
   </style>
 </head>
 <body>
-  <header>
-    <h1>🏥 Hastane Randevu Sistemi</h1>
-    {% if kullanici %}<div>{{ kullanici }} · <a href="{{ url_for('cikis') }}">Çıkış</a></div>{% endif %}
-  </header>
+  <nav>
+    <div class="logo">🏥 Hastane Randevu Sistemi</div>
+    {% if kullanici %}<div class="kisi"><span>{{ kullanici }}</span><a href="{{ url_for('cikis') }}">Çıkış</a></div>{% endif %}
+  </nav>
+  <main>
   {% for kategori, mesaj in get_flashed_messages(with_categories=true) %}
-    <div class="{{ kategori }}">{{ mesaj }}</div>
+    <div class="mesaj {{ kategori }}">{{ mesaj }}</div>
   {% endfor %}
   {% block icerik %}{% endblock %}
+  </main>
 </body>
 </html>

@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, time
 
 from randevu.hatalar import RandevuHatasi, YetkiHatasi, BulunamadiHatasi, SistemHatasi
-from randevu.kullanici import (Kullanici, Hasta, Doktor, Hemsire, Teknisyen, Yonetici)
+from randevu.kullanici import (Kullanici, Hasta, Doktor, Hemsire, Teknisyen, Yonetici, Asistan)
 from randevu.kurum import Kurum, Hastane, Klinik, Muayene, Radyoloji, Laboratuvar, Hizmet
 from randevu.odeme import NakitOdeme, KartOdeme, SigortaOdeme
 from randevu.randevu import RandevuSistemi, RandevuDurumu
@@ -72,6 +72,61 @@ class KullaniciTest(TemelTest):
     def test_hasta_admin_islemi_yapamaz(self):
         self.assertFalse(self.hasta.yetki_var_mi("hastane_ekle"))
         self.assertTrue(self.admin.yetki_var_mi("hastane_ekle"))
+
+
+class AsistanTest(TemelTest):
+    def setUp(self):
+        super().setUp()
+        self.diger = Doktor("Can", "Öztürk", "55555555555", "Kardiyoloji")
+        self.admin.doktor_ekle(self.kardiyoloji, self.diger)
+        self.asistan = Asistan("Elif", "Aydın", "66666666666")
+
+    def test_klinige_atama_cok_biciimli(self):
+        self.admin.personel_ata(self.dahiliye, self.asistan)     # personel listesine
+        self.admin.personel_ata(self.kardiyoloji, self.diger)    # zaten doktor, tekrar eklenmez
+        self.assertIn(self.asistan, self.dahiliye.personeller)
+        self.assertNotIn(self.asistan, self.dahiliye.doktorlar)
+        self.assertEqual(self.asistan.klinikler, (self.dahiliye,))
+        yeni = Doktor("Yeni", "Doktor", "88888888888", "Dahiliye")
+        self.admin.personel_ata(self.dahiliye, yeni)             # doktor ise doktor listesine
+        self.assertIn(yeni, self.dahiliye.doktorlar)
+
+    def test_ortak_klinik_olmadan_baglanamaz(self):
+        self.admin.personel_ata(self.dahiliye, self.asistan)
+        with self.assertRaises(SistemHatasi):
+            self.admin.asistan_bagla(self.asistan, self.diger)   # diger sadece kardiyolojide
+
+    def test_baglama_ve_baska_doktora_tasima(self):
+        self.admin.personel_ata(self.dahiliye, self.asistan)
+        self.admin.personel_ata(self.kardiyoloji, self.asistan)
+        self.admin.asistan_bagla(self.asistan, self.doktor)
+        self.assertIs(self.asistan.doktor, self.doktor)
+        self.assertEqual(self.doktor.asistan_metni, "Asistan: Elif Aydın")
+        self.admin.asistan_bagla(self.asistan, self.diger)       # taşıma
+        self.assertIs(self.asistan.doktor, self.diger)
+        self.assertEqual(self.doktor.asistanlar, ())
+        self.assertEqual(self.doktor.asistan_metni, "")
+        self.assertEqual(self.diger.asistanlar, (self.asistan,))
+
+    def test_hasta_hazirla_sadece_bagli_doktor(self):
+        self.admin.personel_ata(self.dahiliye, self.asistan)
+        self.admin.asistan_bagla(self.asistan, self.doktor)
+        r = self.randevu_al()
+        self.assertIn("hazırlandı", self.asistan.hasta_hazirla(r))
+        self.admin.personel_ata(self.kardiyoloji, self.asistan)
+        self.admin.asistan_bagla(self.asistan, self.diger)
+        with self.assertRaises(YetkiHatasi):
+            self.asistan.hasta_hazirla(r)
+
+    def test_sadece_admin_personel_yonetir(self):
+        self.assertFalse(self.hasta.yetki_var_mi("asistan_bagla"))
+        self.assertFalse(self.doktor.yetki_var_mi("personel_ata"))
+        self.assertTrue(self.admin.yetki_var_mi("asistan_bagla"))
+
+    def test_asistan_rol_ve_kalitim(self):
+        self.assertEqual(self.asistan.rol(), "Asistan")
+        self.assertIsInstance(self.asistan, Kullanici)
+        self.assertNotIn("randevu_onayla", self.asistan.yetkiler())
 
 
 class HizmetTest(unittest.TestCase):

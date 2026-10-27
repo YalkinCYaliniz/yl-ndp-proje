@@ -1,9 +1,34 @@
 {% extends "base.html" %}
 {% block icerik %}
-<h2>Giriş yapılacak kullanıcıyı seçin</h2>
-<p>Bu bir demo girişidir; şifre yoktur.</p>
-{% for k in kullanicilar %}
-  <div class="kutu"><a href="{{ url_for('giris_yap', sira=loop.index0) }}">{{ k }}</a>
-  <span class="etiket">{{ k.yetkiler() | join(', ') }}</span></div>
-{% endfor %}
+<h2>Hangi gruptan giriş yapacaksınız?</h2>
+<p><small>Bu bir demo girişidir; şifre yoktur. Bir gruba tıklayın, sonra kişiyi seçin.</small></p>
+<div class="izgara">
+  {% for anahtar, ad, sayi in gruplar %}
+  <a class="kart kullanici-kart grup {{ 'secili' if anahtar == secili }}" href="{{ url_for('giris', grup=anahtar) }}">
+    <div class="grup-ikon">{{ {'admin': '🛠️', 'personel': '🩺', 'kullanici': '🧑'}[anahtar] }}</div>
+    <div class="ad">{{ ad }}</div>
+    <small>{{ sayi }} kişi</small>
+  </a>
+  {% endfor %}
+</div>
+
+{% if secili %}
+<h2>{{ baslik }}</h2>
+<div class="izgara">
+  {% for sira, k in liste %}
+  <a class="kart kullanici-kart" href="{{ url_for('giris_yap', sira=sira) }}">
+    <span class="rol">{{ k.rol() }}</span>
+    <div class="ad">{{ k.tam_ad }}</div>
+    {% if k.uzmanlik is defined %}<small>{{ k.uzmanlik }}</small>{% endif %}
+    {% if k.klinikler is defined %}
+    <div style="margin-top:8px">
+      {% for kl in k.klinikler %}<span class="etiket">{{ kl.ad }}</span>{% endfor %}
+      {% if k.doktor is defined and k.doktor %}<span class="etiket">👨‍⚕️ {{ k.doktor.tam_ad }}</span>{% endif %}
+      {% if k.asistan_metni is defined and k.asistan_metni %}<span class="etiket">🧑‍⚕️ {{ k.asistan_metni }}</span>{% endif %}
+    </div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

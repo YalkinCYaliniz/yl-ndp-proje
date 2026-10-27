@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block icerik %}
 <h2>Randevu Al</h2>
-<form method="get" class="kutu">
+<form method="get" class="kart">
   <select name="h" onchange="this.form.submit()">
     <option value="">Hastane seçin</option>
     {% for h in hastaneler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('h') == loop.index0|string }}>{{ h.ad }} ({{ h.acilis.strftime('%H:%M') }}-{{ h.kapanis.strftime('%H:%M') }})</option>{% endfor %}
@@ -15,7 +15,7 @@
   {% if secim.klinik %}
   <select name="d" onchange="this.form.submit()">
     <option value="">Doktor seçin</option>
-    {% for d in secim.klinik.doktorlar %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('d') == loop.index0|string }}>{{ d.tam_ad }} ({{ d.uzmanlik }})</option>{% endfor %}
+    {% for d in secim.klinik.doktorlar %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('d') == loop.index0|string }}>{{ d.tam_ad }} ({{ d.uzmanlik }}){{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</option>{% endfor %}
   </select>
   <select name="s" onchange="this.form.submit()">
     <option value="">Hizmet seçin</option>
@@ -23,6 +23,10 @@
   </select>
   {% endif %}
   <noscript><button>Devam</button></noscript>
+  {% if secim.doktor %}
+  <div class="bilgi">👨‍⚕️ <b>{{ secim.doktor.tam_ad }}</b> — {{ secim.doktor.uzmanlik }}
+    {% if secim.doktor.asistanlar %} · 🧑‍⚕️ {{ secim.doktor.asistan_metni }}{% endif %}</div>
+  {% endif %}
 </form>
 
 {% if secim.gunler is not none %}
@@ -30,7 +34,7 @@
   {% if not secim.gunler %}<p>Doktorun tanımlı müsaitliği yok.</p>{% endif %}
   {% for gun, bos in secim.gunler %}
     {% set iso = gun.isoformat() %}
-    <a class="slot {{ 'bos' if bos else 'dolu' }}" style="text-decoration:none; {{ 'outline:3px solid #036;' if ara.get('tarih') == iso }}"
+    <a class="slot {{ 'bos' if bos else 'dolu' }}" style="{{ 'outline:3px solid #0a3d62;' if ara.get('tarih') == iso }}"
        href="{{ url_for('panel', h=ara['h'], k=ara['k'], d=ara['d'], s=ara['s'], tarih=iso) }}">
       {{ gun.strftime('%d.%m.%Y') }} · {{ bos }} boş
     </a>
@@ -60,19 +64,19 @@
   {% for sira, r in randevular %}
   <tr>
     <td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td>
-    <td>{{ r.hastane.ad }} / {{ r.klinik.ad }}</td>
-    <td>{{ r.doktor.tam_ad }}</td>
+    <td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
+    <td>{{ r.doktor.tam_ad }}{% if r.doktor.asistanlar %}<br><span class="asistan">{{ r.doktor.asistan_metni }}</span>{% endif %}</td>
     <td>{{ r.hizmet.ad }}</td>
     <td>{{ r.hizmet.ucret }} TL{% if r.odendi_mi %}<br><small>Ödendi: {{ r.odenen_tutar }} TL</small>{% endif %}</td>
-    <td>{{ r.durum.value }}</td>
+    <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span></td>
     <td>
       {% if r.aktif_mi %}
-      <form class="satir" method="post" action="{{ url_for('hasta_iptal', sira=sira) }}"><button>İptal et</button></form>
+      <form class="satir" method="post" action="{{ url_for('hasta_iptal', sira=sira) }}"><button class="tehlike">İptal et</button></form>
       {% endif %}
       {% if r.durum.value == 'Onaylandı' and not r.odendi_mi %}
       <form class="satir" method="post" action="{{ url_for('hasta_odeme', sira=sira) }}">
         <select name="yontem"><option value="nakit">Nakit</option><option value="kart">Kart (3 taksit)</option><option value="sigorta">Sigorta</option></select>
-        <button>Öde</button>
+        <button class="yesil">Öde</button>
       </form>
       {% endif %}
     </td>

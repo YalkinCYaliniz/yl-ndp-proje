@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, time
 
-from randevu.kullanici import Hasta, Doktor, Yonetici, Hemsire, Teknisyen
+from randevu.kullanici import Hasta, Doktor, Yonetici, Asistan, Hemsire, Teknisyen
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import Randevu, RandevuDurumu
 from randevu.uygulama import Uygulama
@@ -36,6 +36,7 @@ class Depo:
                 "ad": k.ad,
                 "hizmetler": [s.sozluge() for s in k.hizmetler],   # çok biçimlilik
                 "doktorlar": [d.tc_no for d in k.doktorlar],
+                "personel": [p.tc_no for p in k.personeller],
             } for k in h.klinikler],
         }
 
@@ -68,6 +69,13 @@ class Depo:
                     klinik.hizmet_ekle(self._hizmet_olustur(s))
                 for tc in k["doktorlar"]:
                     klinik.doktor_ekle(kisiler[tc])
+                for tc in k.get("personel", []):
+                    klinik.personel_ekle(kisiler[tc])
+
+        # Asistan-doktor bağlantıları klinik atamalarından sonra kurulur
+        for k in veri["kullanicilar"]:
+            if k["tur"] == "Asistan" and k.get("doktor"):
+                kisiler[k["tc_no"]].doktora_bagla(kisiler[k["doktor"]])
 
         for r in veri["randevular"]:
             hastane = uyg.kurum.hastane_bul(r["hastane"])
@@ -85,7 +93,9 @@ class Depo:
             return Hasta(k["ad"], k["soyad"], k["tc_no"])
         if tur == "Yonetici":
             return Yonetici(k["ad"], k["soyad"], k["tc_no"])
-        if tur == "Teknisyen":
+        if tur == "Asistan":
+            kisi = Asistan(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
+        elif tur == "Teknisyen":
             kisi = Teknisyen(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"], k["cihaz"])
         elif tur == "Hemsire":
             kisi = Hemsire(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])

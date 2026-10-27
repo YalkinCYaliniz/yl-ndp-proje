@@ -4,7 +4,8 @@ import unittest
 from datetime import datetime
 
 from randevu.depo import Depo
-from randevu.kullanici import Doktor, Hasta
+from randevu.hatalar import SistemHatasi
+from randevu.kullanici import Doktor, Hasta, Asistan
 from randevu.odeme import KartOdeme
 from randevu.randevu import RandevuDurumu
 from randevu.uygulama import ornek_veri
@@ -29,12 +30,27 @@ class DepoTest(unittest.TestCase):
         klinik = yeni.kurum.hastane_bul("Merkez Hastane").klinik_bul("Kardiyoloji")
         self.assertEqual([s.tur() for s in klinik.hizmetler], ["Radyoloji", "Laboratuvar"])
         self.assertEqual([s.ucret for s in klinik.hizmetler], [700.0, 300.0])
+        self.assertEqual(len(yeni.kullanicilar), len(uyg.kullanicilar))
 
     def test_doktor_cok_klinik_ve_musaitlik_korunur(self):
         self.depo.kaydet(ornek_veri())
         doktor = [k for k in self.depo.yukle().kullanicilar if isinstance(k, Doktor)][0]
         self.assertEqual(len(doktor.klinikler), 2)
         self.assertEqual(len(doktor.musaitlik), 6)
+
+    def test_asistan_baglantisi_ve_klinik_personeli_korunur(self):
+        self.depo.kaydet(ornek_veri())
+        yeni = self.depo.yukle()
+        asistan = [k for k in yeni.kullanicilar if isinstance(k, Asistan)][0]
+        self.assertEqual(asistan.doktor.tam_ad, "Ayşe Yılmaz")
+        self.assertEqual(asistan.doktor.asistan_metni, "Asistan: Elif Aydın")
+        dahiliye = yeni.kurum.hastane_bul("Merkez Hastane").klinik_bul("Dahiliye")
+        self.assertEqual([p.rol() for p in dahiliye.personeller], ["Asistan", "Hemşire"])
+
+    def test_ayni_tc_iki_kez_kaydedilemez(self):
+        uyg = ornek_veri()
+        with self.assertRaises(SistemHatasi):
+            uyg.kullanici_ekle(Hasta("Kopya", "Kişi", "10987654321"))
 
     def test_randevu_durum_ve_odeme_korunur(self):
         uyg = ornek_veri()

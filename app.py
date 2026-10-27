@@ -4,7 +4,8 @@ from datetime import datetime, time
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 
 from randevu.hatalar import SistemHatasi
-from randevu.kullanici import Hasta, Doktor, Yonetici
+from randevu.kullanici import (Hasta, Doktor, Yonetici, SaglikPersoneli, Asistan,
+                               Hemsire, Teknisyen)
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.odeme import NakitOdeme, KartOdeme, SigortaOdeme
 from randevu.depo import Depo
@@ -44,9 +45,30 @@ def calistir(islem, basari: str):
         flash("Bu işlem için yetkiniz yok.", "hata")
 
 
+GRUPLAR = {
+    "admin": ("Admin", Yonetici),
+    "personel": ("Personeller", SaglikPersoneli),
+    "kullanici": ("Kullanıcılar", Hasta),
+}
+ROL_SIRASI = ["Doktor", "Asistan", "Hemşire", "Teknisyen"]
+
+
 @app.route("/")
 def giris():
-    return render_template("giris.html", kullanicilar=uyg.kullanicilar)
+    """Ana sayfa: Admin / Personeller / Kullanıcılar kartları; tıklanan grup listelenir."""
+    gruplar = []
+    for anahtar, (baslik, sinif) in GRUPLAR.items():
+        uyeler = [(sira, k) for sira, k in enumerate(uyg.kullanicilar) if isinstance(k, sinif)]
+        gruplar.append((anahtar, baslik, len(uyeler)))
+    secili = request.args.get("grup")
+    liste = []
+    if secili in GRUPLAR:
+        sinif = GRUPLAR[secili][1]
+        liste = [(sira, k) for sira, k in enumerate(uyg.kullanicilar) if isinstance(k, sinif)]
+        if secili == "personel":        # önce doktorlar, sonra asistan, hemşire, teknisyen
+            liste.sort(key=lambda cift: ROL_SIRASI.index(cift[1].rol()))
+    return render_template("giris.html", gruplar=gruplar, secili=secili, liste=liste,
+                           baslik=GRUPLAR[secili][0] if secili in GRUPLAR else "")
 
 
 @app.route("/giris/<int:sira>")
@@ -71,6 +93,8 @@ def panel():
         return admin_sayfasi(kullanici)
     if isinstance(kullanici, Doktor):
         return doktor_sayfasi(kullanici)
+    if isinstance(kullanici, SaglikPersoneli):      # asistan, hemşire, teknisyen
+        return personel_sayfasi(kullanici)
     return hasta_sayfasi(kullanici)
 
 
@@ -128,6 +152,14 @@ def hasta_odeme(sira):
     odeme = ODEMELER.get(request.form.get("yontem"))
     calistir(lambda: uyg.sistem.randevular[sira].odeme_yap(odeme), "Ödeme alındı.")
     return redirect(url_for("panel"))
+
+
+# ---------------- DİĞER PERSONEL ----------------
+def personel_sayfasi(personel: SaglikPersoneli):
+    doktor = personel.doktor if isinstance(personel, Asistan) else None
+    randevular = uyg.sistem.doktorun_randevulari(doktor) if doktor else []
+    return render_template("personel.html", kullanici=personel, doktor=doktor,
+                           randevular=randevular)
 
 
 # ---------------- DOKTOR ----------------
@@ -189,6 +221,8 @@ def doktor_musaitlik_sil(sira):
 def admin_sayfasi(admin: Yonetici):
     return render_template("admin.html", kullanici=admin, hastaneler=uyg.kurum.hastaneler,
                            klinikler=tum_klinikler(), doktorlar=uyg.doktorlar(),
+                           personeller=personeller(),
+                           asistanlar=[p for p in personeller() if isinstance(p, Asistan)],
                            randevular=uyg.sistem.randevular)
 
 
@@ -228,24 +262,50 @@ def admin_hizmet():
     return redirect(url_for("panel"))
 
 
-@app.post("/admin/doktor")
-def admin_doktor():
+@app.post("/admin/personel")
+def admin_personel():
     f = request.form
+
     def islem():
-        doktor = Doktor(f["ad"], f["soyad"], f["tc"], f["uzmanlik"])
-        uyg.kullanici_ekle(doktor)
-    calistir(islem, "Doktor kaydedildi.")
+        tur, ad, soyad, tc = f["tur"], f["ad"], f["soyad"], f["tc"]
+        uzmanlik = f.get("uzmanlik") or tur.title()
+        if tur == "doktor":
+            kisi = Doktor(ad, soyad, tc, uzmanlik)
+        elif tur == "asistan":
+            kisi = Asistan(ad, soyad, tc, uzmanlik)
+        elif tur == "hemsire":
+            kisi = Hemsire(ad, soyad, tc, uzmanlik)
+        else:
+            kisi = Teknisyen(ad, soyad, tc, uzmanlik, f.get("cihaz") or "Cihaz")
+        simdiki_kullanici().personel_kaydet(uyg, kisi)
+    calistir(islem, "Personel kaydedildi.")
     return redirect(url_for("panel"))
 
 
-@app.post("/admin/doktor-ata")
-def admin_doktor_ata():
+def personeller() -> list:
+    return [k for k in uyg.kullanicilar if isinstance(k, SaglikPersoneli)]
+
+
+@app.post("/admin/personel-ata")
+def admin_personel_ata():
     f = request.form
 
     def islem():
         _, klinik = tum_klinikler()[int(f["klinik"])]
-        simdiki_kullanici().doktor_ekle(klinik, uyg.doktorlar()[int(f["doktor"])])
-    calistir(islem, "Doktor kliniğe atandı.")
+        simdiki_kullanici().personel_ata(klinik, personeller()[int(f["personel"])])
+    calistir(islem, "Personel kliniğe atandı.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/asistan-bagla")
+def admin_asistan_bagla():
+    f = request.form
+
+    def islem():
+        asistanlar = [p for p in personeller() if isinstance(p, Asistan)]
+        simdiki_kullanici().asistan_bagla(asistanlar[int(f["asistan"])],
+                                          uyg.doktorlar()[int(f["doktor"])])
+    calistir(islem, "Asistan doktora bağlandı.")
     return redirect(url_for("panel"))
 
 

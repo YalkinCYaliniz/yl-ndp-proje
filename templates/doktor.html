@@ -1,19 +1,26 @@
 {% extends "base.html" %}
 {% block icerik %}
+<div class="izgara">
+  <div class="kart"><b>Kliniklerim</b>
+    {% for k in kullanici.klinikler %}<span class="etiket">{{ k.ad }}</span>{% else %}-{% endfor %}</div>
+  <div class="kart"><b>Asistanlarım</b>
+    {% for a in kullanici.asistanlar %}<span class="etiket">🧑‍⚕️ {{ a.tam_ad }}</span>{% else %}Henüz asistanınız yok.{% endfor %}</div>
+</div>
+
 <h2>Randevularım</h2>
 <table>
   <tr><th>Tarih</th><th>Hastane / Klinik</th><th>Hasta</th><th>Hizmet</th><th>Durum</th><th>İşlem</th></tr>
   {% for sira, r in randevular %}
   <tr>
     <td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td>
-    <td>{{ r.hastane.ad }} / {{ r.klinik.ad }}</td>
+    <td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
     <td>{{ r.hasta.tam_ad }}</td>
     <td>{{ r.hizmet.ad }}</td>
-    <td>{{ r.durum.value }}</td>
+    <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span></td>
     <td>
       {% if r.durum.value == 'Bekliyor' %}
-      <form class="satir" method="post" action="{{ url_for('doktor_onayla', sira=sira) }}"><button>Onayla</button></form>
-      <form class="satir" method="post" action="{{ url_for('doktor_reddet', sira=sira) }}"><button>Reddet</button></form>
+      <form class="satir" method="post" action="{{ url_for('doktor_onayla', sira=sira) }}"><button class="yesil">Onayla</button></form>
+      <form class="satir" method="post" action="{{ url_for('doktor_reddet', sira=sira) }}"><button class="tehlike">Reddet</button></form>
       {% endif %}
     </td>
   </tr>
@@ -22,7 +29,7 @@
 
 <h2>Takvimim <small>(🟢 boş · 🔴 dolu)</small></h2>
 {% if secenekler %}
-<form method="get" class="kutu">
+<form method="get" class="kart">
   Saat adımı için seçin:
   <select name="x" onchange="this.form.submit()">
     {% for h, k, s in secenekler %}
@@ -50,17 +57,15 @@
   <tr>
     <td>{{ b.strftime('%d.%m.%Y') }}</td><td>{{ b.strftime('%H:%M') }}</td><td>{{ s.strftime('%H:%M') }}</td>
     <td><form class="satir" method="post" action="{{ url_for('doktor_musaitlik_sil', sira=sira) }}"
-              onsubmit="return confirm('Bu müsaitlik silinsin mi?')"><button>Sil</button></form></td>
+              onsubmit="return confirm('Bu müsaitlik silinsin mi?')"><button class="tehlike">Sil</button></form></td>
   </tr>
   {% else %}<tr><td colspan="4">Tanımlı müsaitliğiniz yok.</td></tr>{% endfor %}
 </table>
 
 <h3>Yeni Müsaitlik Ekle</h3>
-<form method="post" action="{{ url_for('doktor_musaitlik') }}" class="kutu">
+<form method="post" action="{{ url_for('doktor_musaitlik') }}" class="kart">
   Başlangıç <input type="datetime-local" name="baslangic" required>
   Bitiş <input type="datetime-local" name="bitis" required>
   <button>Ekle</button>
 </form>
-<h3>Bağlı olduğum klinikler</h3>
-<ul>{% for k in kullanici.klinikler %}<li>{{ k.ad }}</li>{% endfor %}</ul>
 {% endblock %}

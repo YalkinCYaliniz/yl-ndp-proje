@@ -82,6 +82,7 @@ class Klinik:
         # Kapsülleme: listeler _ ile başlar, sadece metotlarla değişir
         self._hizmetler = []
         self._doktorlar = []
+        self._personel = []         # doktor dışındaki personel (asistan, hemşire...)
 
     def hizmet_ekle(self, hizmet: Hizmet) -> None:
         self._hizmetler.append(hizmet)
@@ -91,6 +92,16 @@ class Klinik:
         if doktor not in self._doktorlar:
             self._doktorlar.append(doktor)
             doktor.klinige_katil(self)
+
+    def personel_ekle(self, personel) -> None:
+        """Doktor dışı personeli kliniğe ekler (çoktan çoğa)."""
+        if personel not in self._personel:
+            self._personel.append(personel)
+            personel.klinige_katil(self)
+
+    @property
+    def personeller(self) -> tuple:
+        return tuple(self._personel)
 
     @property
     def hizmetler(self) -> tuple:

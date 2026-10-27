@@ -1,7 +1,7 @@
 """Kullanıcı sınıf hiyerarşisi: soyut taban sınıf + kalıtım + çok biçimlilik."""
 from abc import ABC, abstractmethod
 
-from randevu.hatalar import RandevuHatasi, YetkiHatasi
+from randevu.hatalar import RandevuHatasi, SistemHatasi, YetkiHatasi
 
 
 class Kullanici(ABC):
@@ -103,6 +103,10 @@ class SaglikPersoneli(Kullanici):
             raise YetkiHatasi("Sadece kendi randevularınızı reddedebilirsiniz.")
         randevu.reddet()
 
+    def klinige_ata(self, klinik) -> None:
+        """Personeli kliniğe atar. Doktor bunu ezerek doktor listesine ekler (çok biçimlilik)."""
+        klinik.personel_ekle(self)
+
     def klinige_katil(self, klinik) -> None:
         """Klinik.doktor_ekle() tarafından çağrılır."""
         if klinik not in self._klinikler:
@@ -168,11 +172,83 @@ class SaglikPersoneli(Kullanici):
 
 
 class Doktor(SaglikPersoneli):
+    def __init__(self, ad, soyad, tc_no, uzmanlik: str):
+        super().__init__(ad, soyad, tc_no, uzmanlik)
+        self._asistanlar = []
+
     def rol(self) -> str:        # Çok biçimlilik: method overriding
         return "Doktor"
 
+    def klinige_ata(self, klinik) -> None:     # overriding: doktorlar ayrı listede tutulur
+        klinik.doktor_ekle(self)
+
+    @property
+    def asistanlar(self) -> tuple:
+        return tuple(self._asistanlar)
+
+    @property
+    def asistan_metni(self) -> str:
+        """Ekranda göstermek için: 'Asistan: Elif Aydın' ya da boş."""
+        if not self._asistanlar:
+            return ""
+        return "Asistan: " + ", ".join(a.tam_ad for a in self._asistanlar)
+
+    def _asistan_baglandi(self, asistan) -> None:
+        """Asistan.doktora_bagla() tarafından çağrılır."""
+        if asistan not in self._asistanlar:
+            self._asistanlar.append(asistan)
+
+    def _asistan_ayrildi(self, asistan) -> None:
+        if asistan in self._asistanlar:
+            self._asistanlar.remove(asistan)
+
     def yetkiler(self) -> list[str]:
         return super().yetkiler() + ["randevu_onayla", "recete_yaz"]
+
+
+class Asistan(SaglikPersoneli):
+    """Bir doktora bağlı çalışır; doktor değiştirilebilir."""
+
+    def __init__(self, ad, soyad, tc_no, uzmanlik: str = "Asistan"):
+        super().__init__(ad, soyad, tc_no, uzmanlik)
+        self._doktor = None
+
+    def rol(self) -> str:
+        return "Asistan"
+
+    def yetkiler(self) -> list[str]:
+        return super().yetkiler() + ["hasta_hazirla"]
+
+    @property
+    def doktor(self):
+        return self._doktor
+
+    def doktora_bagla(self, doktor) -> None:
+        """Asistanı doktora bağlar; önceki doktordan otomatik ayrılır."""
+        if doktor is self._doktor:
+            return
+        ortak = [k for k in self._klinikler if doktor in k.doktorlar]
+        if not ortak:
+            raise SistemHatasi("Asistan ve doktor ortak bir klinikte olmalı.")
+        self.doktordan_ayril()
+        doktor._asistan_baglandi(self)
+        self._doktor = doktor
+
+    def doktordan_ayril(self) -> None:
+        if self._doktor is not None:
+            self._doktor._asistan_ayrildi(self)
+            self._doktor = None
+
+    def hasta_hazirla(self, randevu) -> str:
+        self._yetki_kontrol("hasta_hazirla")
+        if randevu.doktor is not self._doktor:
+            raise YetkiHatasi("Sadece bağlı olduğunuz doktorun hastalarını hazırlayabilirsiniz.")
+        return f"{randevu.hasta.tam_ad} muayeneye hazırlandı."
+
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["doktor"] = self._doktor.tc_no if self._doktor else None
+        return veri
 
 
 class Hemsire(SaglikPersoneli):
@@ -219,7 +295,22 @@ class Yonetici(Kullanici):
         return "Admin"
 
     def yetkiler(self) -> list[str]:
-        return ["hastane_ekle", "klinik_ekle", "doktor_ekle", "hizmet_ekle", "randevu_ekle"]
+        return ["hastane_ekle", "klinik_ekle", "doktor_ekle", "hizmet_ekle", "randevu_ekle",
+                "personel_kaydet", "personel_ata", "asistan_bagla"]
+
+    def personel_kaydet(self, uygulama, personel) -> None:
+        self._yetki_kontrol("personel_kaydet")
+        uygulama.kullanici_ekle(personel)
+
+    def personel_ata(self, klinik, personel) -> None:
+        """Her personel türünü kliniğe atar (doktor/asistan/hemşire...)."""
+        self._yetki_kontrol("personel_ata")
+        personel.klinige_ata(klinik)
+
+    def asistan_bagla(self, asistan, doktor) -> None:
+        """Asistanı doktora bağlar veya başka doktora taşır."""
+        self._yetki_kontrol("asistan_bagla")
+        asistan.doktora_bagla(doktor)
 
     def hastane_ekle(self, kurum, hastane) -> None:
         self._yetki_kontrol("hastane_ekle")

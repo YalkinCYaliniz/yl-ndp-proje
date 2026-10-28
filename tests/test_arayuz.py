@@ -12,7 +12,7 @@ class ArayuzTest(unittest.TestCase):
         self.istemci = uygulama_modulu.app.test_client()
 
     def giris(self, sira):
-        self.istemci.get(f"/giris/{sira}")
+        self.istemci.post(f"/giris/{sira}", data={"sifre": "123456"})
 
     def test_giris_sayfasi(self):
         self.assertEqual(self.istemci.get("/").status_code, 200)

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block icerik %}
+<h2>Misafir Olarak Devam Et</h2>
+<form method="post" class="kart" style="max-width:520px">
+  <div class="bilgi">Kayıt olmadan randevu alabilirsiniz. Ancak çıkış yaptığınızda randevularınızı tekrar görüntüleyemezsiniz.</div>
+  <p><input name="ad" placeholder="Ad" value="{{ form.get('ad', '') }}" required>
+     <input name="soyad" placeholder="Soyad" value="{{ form.get('soyad', '') }}" required></p>
+  <button>Devam et</button>
+  <a href="{{ url_for('kayit') }}" style="margin-left:10px">Bunun yerine kayıt ol</a>
+  <a href="{{ url_for('giris') }}" style="margin-left:10px">Geri dön</a>
+</form>
+{% endblock %}

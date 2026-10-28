@@ -1,7 +1,23 @@
 {% extends "base.html" %}
 {% block icerik %}
-<h2>Hangi gruptan giriş yapacaksınız?</h2>
-<p><small>Bu bir demo girişidir; şifre yoktur. Bir gruba tıklayın, sonra kişiyi seçin.</small></p>
+<h2>Giriş</h2>
+<div class="izgara">
+  <form method="post" action="{{ url_for('giris_kullanici') }}" class="kart">
+    <b>Kullanıcı adı ile giriş</b>
+    <input name="kullanici_adi" placeholder="Kullanıcı adı" required>
+    <input type="password" name="sifre" placeholder="Şifre" required>
+    <button>Giriş yap</button>
+  </form>
+  <div class="kart">
+    <b>Hesabınız yok mu?</b>
+    <a href="{{ url_for('kayit') }}"><button type="button">Kayıt ol</button></a>
+    <a href="{{ url_for('misafir') }}"><button type="button" style="background:#6b7a8c">Kayıt olmadan devam et</button></a>
+    <p><small>Kayıt olmadan devam ederseniz randevu geçmişinizi görüntüleyemezsiniz.</small></p>
+  </div>
+</div>
+
+<h2>Kullanıcı seçerek giriş</h2>
+<p><small>Bir gruba tıklayın, kişiyi seçin ve şifresini girin. Demo şifresi tüm örnek kullanıcılar için aynıdır.</small></p>
 <div class="izgara">
   {% for anahtar, ad, sayi in gruplar %}
   <a class="kart kullanici-kart grup {{ 'secili' if anahtar == secili }}" href="{{ url_for('giris', grup=anahtar) }}">

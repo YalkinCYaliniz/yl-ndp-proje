@@ -2,7 +2,11 @@
 from datetime import datetime, time
 
 from randevu.hatalar import SistemHatasi
-from randevu.kullanici import Hasta, Doktor, Yonetici, Asistan, Hemsire, Teknisyen
+from randevu.guvenlik import Sifre
+from randevu.kullanici import (Hasta, Misafir, Doktor, Yonetici, Asistan, Hemsire,
+                               Teknisyen)
+
+VARSAYILAN_SIFRE = "123456"      # demo: tüm örnek kullanıcıların şifresi
 from randevu.kurum import Kurum, Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import RandevuSistemi
 
@@ -17,7 +21,40 @@ class Uygulama:
         for k in self.kullanicilar:
             if k.tc_no == kullanici.tc_no:
                 raise SistemHatasi("Bu TC kimlik no ile kayıtlı bir kullanıcı var.")
+            if k.kullanici_adi == kullanici.kullanici_adi:
+                raise SistemHatasi("Bu kullanıcı adı zaten alınmış.")
+            if k.eposta == kullanici.eposta:
+                raise SistemHatasi("Bu e-posta ile kayıtlı bir kullanıcı var.")
         self.kullanicilar.append(kullanici)
+
+    def kimlik_dogrula(self, kullanici_adi: str, sifre: str):
+        """Kullanıcı adı ve şifre doğruysa kullanıcıyı döndürür."""
+        for k in self.kullanicilar:
+            if k.kullanici_adi == kullanici_adi.strip().lower() and k.sifre_dogru_mu(sifre):
+                return k
+        raise SistemHatasi("Kullanıcı adı veya şifre hatalı.")
+
+    def hasta_kaydet(self, ad, soyad, tc, eposta, kullanici_adi, sifre, sifre_tekrar) -> Hasta:
+        """Yeni hasta hesabı oluşturur (kayıt ol)."""
+        if sifre != sifre_tekrar:
+            raise SistemHatasi("Şifreler eşleşmiyor.")
+        hasta = Hasta(ad, soyad, tc)
+        hasta.kullanici_adi = kullanici_adi
+        hasta.eposta = eposta
+        hasta.sifre_belirle(Sifre.olustur(sifre))
+        self.kullanici_ekle(hasta)
+        return hasta
+
+    def misafir_olustur(self, ad, soyad) -> Misafir:
+        """Kayıt olmadan devam eden kişi için geçici hesap açar."""
+        sira = len(self.kullanicilar)
+        tc = "8" + str(sira).zfill(10)
+        while any(k.tc_no == tc for k in self.kullanicilar):
+            sira += 1
+            tc = "8" + str(sira).zfill(10)
+        misafir = Misafir(ad, soyad, tc)
+        self.kullanici_ekle(misafir)
+        return misafir
 
     def doktorlar(self) -> list:
         return [k for k in self.kullanicilar if isinstance(k, Doktor)]
@@ -69,9 +106,11 @@ def ornek_veri() -> Uygulama:
     oguz = Hasta("Oğuz", "Eren", "90000000019")
     derya = Asistan("Derya", "Kurt", "90000000020")     # Can'ın ikinci asistanı
 
+    demo_sifre = Sifre.olustur(VARSAYILAN_SIFRE)    # herkes için aynı (demo)
     for k in (admin, ali, veli, ayse, can, elif_, zeynep, seda, selin, murat, deniz, burcu,
               emre, hakan, aylin, burak, gizem, okan, merve, hatice, can_er, ece,
               ayten, kemal, selma, oguz, derya):
+        k.sifre_belirle(demo_sifre)
         uyg.kullanici_ekle(k)
 
     # ---------------- Hastaneler ve klinikler ----------------

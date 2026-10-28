@@ -3,10 +3,12 @@ import json
 import os
 from datetime import datetime, time
 
-from randevu.kullanici import Hasta, Doktor, Yonetici, Asistan, Hemsire, Teknisyen
+from randevu.guvenlik import Sifre
+from randevu.kullanici import (Hasta, Misafir, Doktor, Yonetici, Asistan, Hemsire,
+                               Teknisyen)
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import Randevu, RandevuDurumu
-from randevu.uygulama import Uygulama
+from randevu.uygulama import Uygulama, VARSAYILAN_SIFRE
 
 
 class Depo:
@@ -55,8 +57,11 @@ class Depo:
 
         uyg = Uygulama()
         uyg.kurum.ad = veri["kurum"]
+        varsayilan = Sifre.olustur(VARSAYILAN_SIFRE)     # eski kayıtlarda şifre yoksa
         for k in veri["kullanicilar"]:
-            uyg.kullanici_ekle(self._kullanici_olustur(k))
+            kisi = self._kullanici_olustur(k)
+            self._kimlik_yukle(kisi, k, varsayilan)
+            uyg.kullanici_ekle(kisi)
         kisiler = {k.tc_no: k for k in uyg.kullanicilar}
 
         for h in veri["hastaneler"]:
@@ -87,8 +92,21 @@ class Depo:
                 RandevuDurumu[r["durum"]], r["odenen_tutar"]))
         return uyg
 
+    def _kimlik_yukle(self, kisi, k: dict, varsayilan) -> None:
+        """Kullanıcı adı, e-posta ve şifreyi geri yükler."""
+        if k.get("kullanici_adi"):
+            kisi.kullanici_adi = k["kullanici_adi"]
+        if k.get("eposta"):
+            kisi.eposta = k["eposta"]
+        if k.get("sifre"):
+            kisi.sifre_belirle(Sifre.sozlukten(k["sifre"]))
+        elif kisi.kayitli_mi:
+            kisi.sifre_belirle(varsayilan)
+
     def _kullanici_olustur(self, k: dict):
         tur = k["tur"]
+        if tur == "Misafir":
+            return Misafir(k["ad"], k["soyad"], k["tc_no"])
         if tur == "Hasta":
             return Hasta(k["ad"], k["soyad"], k["tc_no"])
         if tur == "Yonetici":

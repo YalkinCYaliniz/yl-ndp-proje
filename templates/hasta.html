@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block icerik %}
+{% if not kullanici.kayitli_mi %}
+<div class="bilgi">Misafir olarak devam ediyorsunuz. Çıkış yaptığınızda bu randevuları tekrar göremezsiniz.
+  <a href="{{ url_for('kayit') }}">Kayıt olun</a></div>
+{% endif %}
 <h2>Randevu Al</h2>
 <form method="get" class="kart">
   <select name="h" onchange="this.form.submit()">

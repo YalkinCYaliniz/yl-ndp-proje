@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block icerik %}
+<h2>Giriş</h2>
+<form method="post" class="kart" style="max-width:420px">
+  <span class="rol">{{ secilen.rol() }}</span>
+  <div class="ad" style="font-weight:700; font-size:1.1rem">{{ secilen.tam_ad }}</div>
+  <small>{{ secilen.kullanici_adi }}</small>
+  <p><input type="password" name="sifre" placeholder="Şifre" autofocus required style="width:100%"></p>
+  <button>Giriş yap</button>
+  <a href="{{ url_for('giris') }}" style="margin-left:10px">Geri dön</a>
+  <p><small>Demo şifresi (tüm örnek kullanıcılar): {{ varsayilan }}</small></p>
+</form>
+{% endblock %}

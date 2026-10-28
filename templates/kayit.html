@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block icerik %}
+<h2>Kayıt Ol</h2>
+<form method="post" class="kart" style="max-width:520px">
+  <p><input name="ad" placeholder="Ad" value="{{ form.get('ad', '') }}" required>
+     <input name="soyad" placeholder="Soyad" value="{{ form.get('soyad', '') }}" required></p>
+  <p><input name="tc" placeholder="TC kimlik no (11 hane)" value="{{ form.get('tc', '') }}" required style="width:100%"></p>
+  <p><input type="email" name="eposta" placeholder="E-posta" value="{{ form.get('eposta', '') }}" required style="width:100%"></p>
+  <p><input name="kullanici_adi" placeholder="Kullanıcı adı" value="{{ form.get('kullanici_adi', '') }}" required style="width:100%"></p>
+  <p><input type="password" name="sifre" placeholder="Şifre (en az 6 karakter)" required style="width:100%"></p>
+  <p><input type="password" name="sifre_tekrar" placeholder="Şifre tekrar" required style="width:100%"></p>
+  <button>Kayıt ol</button>
+  <a href="{{ url_for('giris') }}" style="margin-left:10px">Geri dön</a>
+</form>
+{% endblock %}

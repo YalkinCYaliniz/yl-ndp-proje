@@ -1,7 +1,11 @@
 """Kullanıcı sınıf hiyerarşisi: soyut taban sınıf + kalıtım + çok biçimlilik."""
+import re
 from abc import ABC, abstractmethod
 
+from randevu.guvenlik import Sifre
 from randevu.hatalar import RandevuHatasi, SistemHatasi, YetkiHatasi
+
+_TR = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
 
 
 class Kullanici(ABC):
@@ -12,6 +16,44 @@ class Kullanici(ABC):
         self.soyad = soyad
         self.__tc_no = None          # Kapsülleme: özel alan
         self.tc_no = tc_no           # property üzerinden doğrulanır
+        self.__sifre = None          # Sifre nesnesi; düz şifre hiçbir yerde tutulmaz
+        self.__kullanici_adi = None
+        self.__eposta = None
+        self.kullanici_adi = f"{ad}.{soyad}".translate(_TR).lower().replace(" ", "")
+        self.eposta = f"{self.kullanici_adi}@hastane.com"
+
+    @property
+    def kullanici_adi(self) -> str:
+        return self.__kullanici_adi
+
+    @kullanici_adi.setter
+    def kullanici_adi(self, deger: str):
+        deger = deger.strip().lower()
+        if not re.fullmatch(r"[a-z0-9._]{3,30}", deger):
+            raise ValueError("Kullanıcı adı 3-30 karakter olmalı; harf, rakam, nokta ve alt çizgi içerebilir.")
+        self.__kullanici_adi = deger
+
+    @property
+    def eposta(self) -> str:
+        return self.__eposta
+
+    @eposta.setter
+    def eposta(self, deger: str):
+        deger = deger.strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", deger):
+            raise ValueError("Geçerli bir e-posta adresi girin.")
+        self.__eposta = deger
+
+    @property
+    def kayitli_mi(self) -> bool:
+        """Misafir bunu ezer; kayıtlı kullanıcılar giriş yapabilir."""
+        return True
+
+    def sifre_belirle(self, sifre: Sifre) -> None:
+        self.__sifre = sifre
+
+    def sifre_dogru_mu(self, duz_sifre: str) -> bool:
+        return self.__sifre is not None and self.__sifre.dogru_mu(duz_sifre)
 
     @property
     def tc_no(self) -> str:
@@ -38,7 +80,9 @@ class Kullanici(ABC):
     def sozluge(self) -> dict:
         """Kaydetmek için sözlüğe çevirir (alt sınıflar ekleme yapar)."""
         return {"tur": type(self).__name__, "ad": self.ad,
-                "soyad": self.soyad, "tc_no": self.tc_no}
+                "soyad": self.soyad, "tc_no": self.tc_no,
+                "kullanici_adi": self.kullanici_adi, "eposta": self.eposta,
+                "sifre": self.__sifre.sozluge() if self.__sifre else None}
 
     def yetki_var_mi(self, islem: str) -> bool:
         return islem in self.yetkiler()
@@ -74,6 +118,22 @@ class Hasta(Kullanici):
         if randevu.hasta is not self:
             raise YetkiHatasi("Başkasının randevusunu iptal edemezsiniz.")
         randevu.iptal()
+
+
+class Misafir(Hasta):
+    """Kayıt olmadan ilerleyen hasta: randevu alır ama giriş yapamaz ve eski randevularını göremez."""
+
+    def __init__(self, ad: str, soyad: str, tc_no: str):
+        super().__init__(ad, soyad, tc_no)
+        self.kullanici_adi = f"misafir{tc_no}"
+        self.eposta = f"{self.kullanici_adi}@misafir.local"
+
+    def rol(self) -> str:
+        return "Misafir"
+
+    @property
+    def kayitli_mi(self) -> bool:
+        return False
 
 
 class SaglikPersoneli(Kullanici):

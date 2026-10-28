@@ -9,7 +9,7 @@ from randevu.kullanici import (Hasta, Doktor, Yonetici, SaglikPersoneli, Asistan
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.odeme import NakitOdeme, KartOdeme, SigortaOdeme
 from randevu.depo import Depo
-from randevu.uygulama import ornek_veri
+from randevu.uygulama import ornek_veri, VARSAYILAN_SIFRE
 
 app = Flask(__name__)
 app.secret_key = "ndp-proje-gelistirme"
@@ -32,12 +32,16 @@ def tum_klinikler() -> list:
     return [(h, k) for h in uyg.kurum.hastaneler for k in h.klinikler]
 
 
+def kaydet() -> None:
+    if depo:
+        depo.kaydet(uyg)
+
+
 def calistir(islem, basari: str):
     """İşlemi dener; SistemHatasi olursa kullanıcıya mesaj gösterir."""
     try:
         islem()
-        if depo:
-            depo.kaydet(uyg)        # her başarılı işlemden sonra dosyaya yaz
+        kaydet()                    # her başarılı işlemden sonra dosyaya yaz
         flash(basari, "ok")
     except (SistemHatasi, ValueError, IndexError, KeyError) as hata:
         flash(str(hata) or "Geçersiz seçim.", "hata")
@@ -58,13 +62,15 @@ def giris():
     """Ana sayfa: Admin / Personeller / Kullanıcılar kartları; tıklanan grup listelenir."""
     gruplar = []
     for anahtar, (baslik, sinif) in GRUPLAR.items():
-        uyeler = [(sira, k) for sira, k in enumerate(uyg.kullanicilar) if isinstance(k, sinif)]
+        uyeler = [(sira, k) for sira, k in enumerate(uyg.kullanicilar)
+                  if isinstance(k, sinif) and k.kayitli_mi]
         gruplar.append((anahtar, baslik, len(uyeler)))
     secili = request.args.get("grup")
     liste = []
     if secili in GRUPLAR:
         sinif = GRUPLAR[secili][1]
-        liste = [(sira, k) for sira, k in enumerate(uyg.kullanicilar) if isinstance(k, sinif)]
+        liste = [(sira, k) for sira, k in enumerate(uyg.kullanicilar)
+                 if isinstance(k, sinif) and k.kayitli_mi]
     kategoriler = []
     secili_rol = request.args.get("rol", "")
     if secili == "personel":
@@ -78,10 +84,62 @@ def giris():
                            baslik=GRUPLAR[secili][0] if secili in GRUPLAR else "")
 
 
-@app.route("/giris/<int:sira>")
+@app.route("/giris/<int:sira>", methods=["GET", "POST"])
 def giris_yap(sira):
-    session["kullanici"] = sira
-    return redirect(url_for("panel"))
+    """Listeden seçilen kullanıcı için şifre sorar."""
+    if sira >= len(uyg.kullanicilar) or not uyg.kullanicilar[sira].kayitli_mi:
+        flash("Bu hesapla giriş yapılamaz.", "hata")
+        return redirect(url_for("giris"))
+    secilen = uyg.kullanicilar[sira]
+    if request.method == "POST":
+        if secilen.sifre_dogru_mu(request.form.get("sifre", "")):
+            session["kullanici"] = sira
+            return redirect(url_for("panel"))
+        flash("Şifre hatalı.", "hata")
+    return render_template("sifre_giris.html", secilen=secilen, varsayilan=VARSAYILAN_SIFRE)
+
+
+@app.post("/giris-kullanici")
+def giris_kullanici():
+    """Kullanıcı adı ve şifre ile giriş."""
+    try:
+        kisi = uyg.kimlik_dogrula(request.form.get("kullanici_adi", ""), request.form.get("sifre", ""))
+        session["kullanici"] = uyg.kullanicilar.index(kisi)
+        return redirect(url_for("panel"))
+    except SistemHatasi as hata:
+        flash(str(hata), "hata")
+        return redirect(url_for("giris"))
+
+
+@app.route("/kayit", methods=["GET", "POST"])
+def kayit():
+    """Yeni hasta kaydı: e-posta, kullanıcı adı ve şifre."""
+    if request.method == "POST":
+        f = request.form
+        try:
+            hasta = uyg.hasta_kaydet(f["ad"], f["soyad"], f["tc"], f["eposta"],
+                                     f["kullanici_adi"], f["sifre"], f["sifre_tekrar"])
+            kaydet()
+            session["kullanici"] = uyg.kullanicilar.index(hasta)
+            flash("Kayıt tamamlandı, hoş geldiniz.", "ok")
+            return redirect(url_for("panel"))
+        except (SistemHatasi, ValueError) as hata:
+            flash(str(hata), "hata")
+    return render_template("kayit.html", form=request.form)
+
+
+@app.route("/misafir", methods=["GET", "POST"])
+def misafir():
+    """Kayıt olmadan devam: sadece ad soyad sorulur, eski randevular görüntülenmez."""
+    if request.method == "POST":
+        try:
+            kisi = uyg.misafir_olustur(request.form["ad"].strip(), request.form["soyad"].strip())
+            kaydet()
+            session["kullanici"] = uyg.kullanicilar.index(kisi)
+            return redirect(url_for("panel"))
+        except (SistemHatasi, ValueError) as hata:
+            flash(str(hata), "hata")
+    return render_template("misafir.html", form=request.form)
 
 
 @app.route("/cikis")

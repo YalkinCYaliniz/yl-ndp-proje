@@ -174,10 +174,10 @@ def ornek_veri(baslangic_gunu: date = date(2026, 10, 28)) -> Uygulama:
     # ---------------- Elle yapılan personel atamaları ----------------
     atamalar = {
         ("Merkez Hastane", "Dahiliye"): [ayse, elif_, zeynep],
-        ("Merkez Hastane", "Kardiyoloji"): [ayse, can, burak, derya],
+        ("Merkez Hastane", "Kardiyoloji"): [can, burak, derya],
         ("Merkez Hastane", "Göz Hastalıkları"): [selin],
         ("Merkez Hastane", "Radyoloji"): [murat, can_er],
-        ("Kadıköy Hastane", "Dahiliye"): [deniz],
+        ("Kadıköy Hastane", "Dahiliye"): [ayse, deniz],
         ("Kadıköy Hastane", "Ortopedi"): [burcu, gizem],
         ("Kadıköy Hastane", "Çocuk Sağlığı"): [emre, merve],
         ("Kadıköy Hastane", "Laboratuvar"): [ece],

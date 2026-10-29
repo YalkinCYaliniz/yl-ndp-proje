@@ -18,17 +18,22 @@ class TemelTest(unittest.TestCase):
         self.doktor = Doktor("Ayşe", "Yılmaz", "12345678901", "Dahiliye")
         self.kurum = Kurum("Grup")
         self.merkez = Hastane("Merkez", time(8, 0), time(17, 0))
+        self.kadikoy = Hastane("Kadıköy", time(8, 0), time(17, 0))
         self.dahiliye = Klinik("Dahiliye")
+        self.dahiliye2 = Klinik("Dahiliye")
         self.kardiyoloji = Klinik("Kardiyoloji")
         self.muayene = Muayene("Muayene", 30, 500.0)
         self.ekg = Radyoloji("EKG", 30, 400.0, cihaz_ucreti=300.0)
         self.admin.hastane_ekle(self.kurum, self.merkez)
+        self.admin.hastane_ekle(self.kurum, self.kadikoy)
         self.admin.klinik_ekle(self.merkez, self.dahiliye)
         self.admin.klinik_ekle(self.merkez, self.kardiyoloji)
+        self.admin.klinik_ekle(self.kadikoy, self.dahiliye2)
         self.admin.hizmet_ekle(self.dahiliye, self.muayene)
+        self.admin.hizmet_ekle(self.dahiliye2, self.ekg)
         self.admin.hizmet_ekle(self.kardiyoloji, self.ekg)
         self.admin.doktor_ekle(self.dahiliye, self.doktor)
-        self.admin.doktor_ekle(self.kardiyoloji, self.doktor)
+        self.admin.doktor_ekle(self.dahiliye2, self.doktor)
         self.doktor.musaitlik_ekle(datetime(2026, 10, 14, 13, 0), datetime(2026, 10, 14, 15, 0))
         self.sistem = RandevuSistemi()
         self.zaman = datetime(2026, 10, 14, 13, 30)
@@ -68,6 +73,12 @@ class KullaniciTest(TemelTest):
     def test_doktor_birden_fazla_klinik_ve_hizmet(self):
         self.assertEqual(len(self.doktor.klinikler), 2)
         self.assertEqual(len(self.doktor.hizmetler), 2)
+
+    def test_doktor_baska_uzmanlik_klinigine_atanamaz(self):
+        with self.assertRaises(SistemHatasi):
+            self.admin.doktor_ekle(self.kardiyoloji, self.doktor)    # Ayşe: Dahiliye != Kardiyoloji
+        with self.assertRaises(ValueError):
+            Doktor("A", "B", "99999999999", "   ")                   # boş uzmanlık olamaz
 
     def test_hasta_admin_islemi_yapamaz(self):
         self.assertFalse(self.hasta.yetki_var_mi("hastane_ekle"))
@@ -219,8 +230,26 @@ class RandevuTest(TemelTest):
     def test_kismi_cakisma_baska_klinikte_de_engellenir(self):
         self.randevu_al()
         with self.assertRaises(RandevuHatasi):
-            self.hasta2.randevu_al(self.sistem, self.merkez, self.kardiyoloji,
+            self.hasta2.randevu_al(self.sistem, self.kadikoy, self.dahiliye2,
                                    self.doktor, self.ekg, datetime(2026, 10, 14, 13, 45))
+
+    def test_hasta_ayni_saat_veya_1_saat_icinde_baska_randevu_alamaz(self):
+        diger_doktor = Doktor("Can", "Öztürk", "55555555555", "Kardiyoloji")
+        self.admin.doktor_ekle(self.kardiyoloji, diger_doktor)
+        diger_doktor.musaitlik_ekle(datetime(2026, 10, 14, 13, 0), datetime(2026, 10, 14, 16, 0))
+        self.randevu_al(zaman=datetime(2026, 10, 14, 13, 30))
+        # Aynı saatte başka doktordan randevu alamaz
+        with self.assertRaises(RandevuHatasi):
+            self.hasta.randevu_al(self.sistem, self.merkez, self.kardiyoloji,
+                                  diger_doktor, self.ekg, datetime(2026, 10, 14, 13, 30))
+        # 30 dakika sonra (14:00) da alamaz (en az 1 saat ara olmalı)
+        with self.assertRaises(RandevuHatasi):
+            self.hasta.randevu_al(self.sistem, self.merkez, self.kardiyoloji,
+                                  diger_doktor, self.ekg, datetime(2026, 10, 14, 14, 0))
+        # Tam 1 saat sonra (14:30) alabilir
+        r2 = self.hasta.randevu_al(self.sistem, self.merkez, self.kardiyoloji,
+                                   diger_doktor, self.ekg, datetime(2026, 10, 14, 14, 30))
+        self.assertEqual(r2.baslangic, datetime(2026, 10, 14, 14, 30))
 
     def test_musait_olmayan_saat(self):
         with self.assertRaises(RandevuHatasi):

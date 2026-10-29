@@ -262,13 +262,20 @@ def doktor_sayfasi(doktor: Doktor):
         takvim = [(gun, uyg.sistem.saat_tablosu(hastane, doktor, hizmet, gun)) for gun in gunler]
     musaitlikler = sorted(enumerate(doktor.musaitlik), key=lambda cift: cift[1][0])
     klinik_hizmetleri = []              # "Sunduğum hizmetler" formu için
+    klinik_asistanlari = []             # Klinik seçip o klinikteki asistanı kendine bağlama
     for sira, klinik in enumerate(doktor.klinikler):
         hastane = next(h for h in uyg.kurum.hastaneler if klinik in h.klinikler)
         sunulan = doktor.sunulan_hizmetler(klinik)
         klinik_hizmetleri.append((sira, hastane, klinik,
                                   [(i, s, s in sunulan) for i, s in enumerate(klinik.hizmetler)]))
+        uygun_asistanlar = [
+            (personeller().index(p), p) for p in klinik.personeller
+            if isinstance(p, Asistan) and p.doktor is not doktor
+        ]
+        klinik_asistanlari.append((sira, hastane, klinik, uygun_asistanlar))
     return render_template("doktor.html", kullanici=doktor, secenekler=secenekler,
                            klinik_hizmetleri=klinik_hizmetleri,
+                           klinik_asistanlari=klinik_asistanlari,
                            musaitlikler=musaitlikler,
                            secili=secili, takvim=takvim,
                            randevular=[(uyg.sistem.randevular.index(r), r) for r in randevular])
@@ -328,12 +335,52 @@ def doktor_musaitlik_sil(sira):
     return redirect(url_for("panel"))
 
 
+@app.post("/doktor/asistan-ekle")
+def doktor_asistan_ekle():
+    doktor = simdiki_kullanici()
+    f = request.form
+
+    def islem():
+        asistan = personeller()[int(f["asistan"])]
+        doktor.asistan_ekle(asistan)
+    calistir(islem, "Asistanınıza eklendi.")
+    return redirect(url_for("panel"))
+
+
 # ---------------- ADMIN ----------------
 def admin_sayfasi(admin: Yonetici):
+    tum_kl = tum_klinikler()
+    ara = request.args
+    secili_kl_sira = int(ara["ak"]) if ara.get("ak", "").isdigit() and int(ara["ak"]) < len(tum_kl) else 0
+    secili_hastane, secili_klinik = tum_kl[secili_kl_sira] if tum_kl else (None, None)
+    klinik_doktorlari = list(secili_klinik.doktorlar) if secili_klinik else []
+    secili_dr_sira = int(ara["ad"]) if ara.get("ad", "").isdigit() and int(ara["ad"]) < len(klinik_doktorlari) else 0
+    secili_doktor = klinik_doktorlari[secili_dr_sira] if klinik_doktorlari else None
+    tum_asistanlar = [p for p in personeller() if isinstance(p, Asistan)]
+    uygun_asistanlar = []
+    if secili_klinik and secili_doktor:
+        uygun_asistanlar = [
+            (tum_asistanlar.index(p), p) for p in secili_klinik.personeller
+            if isinstance(p, Asistan) and p.doktor is not secili_doktor
+        ]
+    asistan_klinikleri = {}
+    for a in tum_asistanlar:
+        etk = []
+        for h in uyg.kurum.hastaneler:
+            for k in h.klinikler:
+                if a in k.personeller:
+                    etk.append(f"{h.ad} / {k.ad}")
+        asistan_klinikleri[id(a)] = ", ".join(etk) if etk else "Klinik atanmadı"
     return render_template("admin.html", kullanici=admin, hastaneler=uyg.kurum.hastaneler,
-                           klinikler=tum_klinikler(), doktorlar=uyg.doktorlar(),
+                           klinikler=tum_kl, doktorlar=uyg.doktorlar(),
                            personeller=personeller(),
-                           asistanlar=[p for p in personeller() if isinstance(p, Asistan)],
+                           asistanlar=tum_asistanlar,
+                           asistan_klinikleri=asistan_klinikleri,
+                           secili_kl_sira=secili_kl_sira,
+                           klinik_doktorlari=[(uyg.doktorlar().index(d), d) for d in klinik_doktorlari],
+                           secili_dr_sira=secili_dr_sira,
+                           secili_doktor=secili_doktor,
+                           uygun_asistanlar=uygun_asistanlar,
                            randevular=uyg.sistem.randevular)
 
 

@@ -79,7 +79,7 @@ class Depo:
                 for s in k["hizmetler"]:
                     klinik.hizmet_ekle(self._hizmet_olustur(s))
                 for tc in k["doktorlar"]:
-                    klinik.doktor_ekle(kisiler[tc])
+                    klinik.doktor_yukle(kisiler[tc])
                 for tc in k.get("personel", []):
                     klinik.personel_ekle(kisiler[tc])
                 for tc, adlar in k.get("doktor_hizmetleri", {}).items():

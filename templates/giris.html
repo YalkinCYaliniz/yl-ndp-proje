@@ -53,7 +53,7 @@
     {% if k.klinikler is defined %}
     <div style="margin-top:8px">
       {% for kl in k.klinikler %}<span class="etiket">{{ kl.ad }}</span>{% endfor %}
-      {% if k.doktor is defined and k.doktor %}<span class="etiket">{{ k.doktor.tam_ad }}</span>{% endif %}
+      {% if k.doktor is defined and k.doktor %}<span class="etiket">{{ k.doktor.tam_ad }} ({{ k.doktor.uzmanlik }})</span>{% endif %}
       {% if k.asistan_metni is defined and k.asistan_metni %}<span class="etiket">{{ k.asistan_metni }}</span>{% endif %}
     </div>
     {% endif %}

@@ -1,11 +1,34 @@
 {% extends "base.html" %}
 {% block icerik %}
 <div class="izgara">
+  <div class="kart"><b>Uzmanlık Alanım</b>
+    <span class="rol">Doktor</span> {{ kullanici.uzmanlik }}</div>
   <div class="kart"><b>Kliniklerim</b>
     {% for k in kullanici.klinikler %}<span class="etiket">{{ k.ad }}</span>{% else %}-{% endfor %}</div>
-  <div class="kart"><b>Asistanlarım</b>
-    {% for a in kullanici.asistanlar %}<span class="etiket">{{ a.tam_ad }}</span>{% else %}Henüz asistanınız yok.{% endfor %}</div>
+  <div class="kart"><b>Asistanlarım ({{ kullanici.asistanlar|length }}/{{ kullanici.MAX_ASISTAN }})</b>
+    {% for a in kullanici.asistanlar %}<span class="etiket">{{ a.tam_ad }} ({{ a.klinik_metni }})</span>{% else %}Henüz asistanınız yok.{% endfor %}</div>
 </div>
+
+{% if not kullanici.asistan_kapasitesi_dolu_mu %}
+<h2>Kliniğimden Asistan Ekle</h2>
+<div class="izgara">
+{% for sira, hastane, klinik, uygunlar in klinik_asistanlari %}
+  <form method="post" action="{{ url_for('doktor_asistan_ekle') }}" class="kart">
+    <b>{{ hastane.ad }} / {{ klinik.ad }}</b>
+    {% if uygunlar %}
+    <select name="asistan" required>
+      {% for p_sira, a in uygunlar %}
+      <option value="{{ p_sira }}">{{ a.tam_ad }} ({{ a.klinik_metni }}){{ ' · şu an: ' ~ a.doktor.tam_ad ~ ' (' ~ a.doktor.uzmanlik ~ ')' if a.doktor else ' · boşta' }}</option>
+      {% endfor %}
+    </select>
+    <button>Kendime bağla</button>
+    {% else %}
+    <small>Bu klinikte size bağlanabilecek başka asistan yok.</small>
+    {% endif %}
+  </form>
+{% endfor %}
+</div>
+{% endif %}
 
 <h2>Randevularım</h2>
 <table>

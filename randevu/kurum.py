@@ -92,7 +92,16 @@ class Klinik:
 
     def doktor_ekle(self, doktor) -> None:
         """Doktoru kliniğe ekler, doktora da kliniği bildirir (çoktan çoğa)."""
+        if not doktor.klinige_uygun_mu(self):
+            raise SistemHatasi(
+                f"{doktor.tam_ad} ({doktor.uzmanlik}) sadece kendi uzmanlık kliniğine atanabilir, '{self.ad}' kliniğine atanamaz.")
         if doktor not in self._doktorlar:
+            self._doktorlar.append(doktor)
+            doktor.klinige_katil(self)
+
+    def doktor_yukle(self, doktor) -> None:
+        """Dosyadan yüklenirken doktoru ekler."""
+        if doktor.klinige_uygun_mu(self) and doktor not in self._doktorlar:
             self._doktorlar.append(doktor)
             doktor.klinige_katil(self)
 

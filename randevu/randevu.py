@@ -92,6 +92,12 @@ class Randevu:
         """Verilen zaman aralığıyla kesişiyor mu?"""
         return self.aktif_mi and self.baslangic < bitis and baslangic < self.bitis
 
+    def hasta_icin_uygun_mu(self, baslangic) -> bool:
+        """Aynı gün için hastanın iki randevu başlangıcı arasında en az 1 saat olmalı."""
+        if not self.aktif_mi or self.baslangic.date() != baslangic.date():
+            return True
+        return abs(baslangic - self.baslangic) >= timedelta(hours=1)
+
     def __str__(self) -> str:
         return (f"{tarih_saat_yaz(self.baslangic)} | {self.hastane.ad} | {self.klinik.ad} | "
                 f"{self.doktor.tam_ad} | {self.hizmet.ad} | {self.hasta.tam_ad} | "
@@ -201,6 +207,9 @@ class RandevuSistemi:
             raise RandevuHatasi("Doktor bu tarih/saatte müsait değil.")
         if self._dolu_mu(doktor, yeni.baslangic, yeni.bitis):
             raise RandevuHatasi("Randevu çakışması var.")
+        for r in self.hastanin_randevulari(hasta):
+            if r.cakisiyor_mu(yeni.baslangic, yeni.bitis) or not r.hasta_icin_uygun_mu(yeni.baslangic):
+                raise RandevuHatasi("Aynı gün randevularınız arasında en az 1 saat olmalıdır.")
 
         self._randevular.append(yeni)
         return yeni

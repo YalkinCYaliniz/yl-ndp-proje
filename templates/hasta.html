@@ -94,7 +94,7 @@
   <tr>
     <td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td>
     <td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
-    <td>{{ r.doktor.tam_ad }}{% if r.doktor.asistanlar %}<br><span class="asistan">{{ r.doktor.asistan_metni }}</span>{% endif %}</td>
+    <td>{{ r.doktor.tam_ad }} <small>({{ r.doktor.uzmanlik }})</small>{% if r.doktor.asistanlar %}<br><span class="asistan">{{ r.doktor.asistan_metni }}</span>{% endif %}</td>
     <td>{{ r.hizmet.ad }}</td>
     <td>{{ r.hizmet.ucret }} TL{% if r.odendi_mi %}<br><small>Ödendi: {{ r.odenen_tutar }} TL</small>{% endif %}</td>
     <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span></td>
@@ -119,7 +119,7 @@
   {% for r in receteler %}
   <tr>
     <td>{{ r.recete.tarih.strftime('%d.%m.%Y %H:%M') }}</td>
-    <td>{{ r.doktor.tam_ad }}<br><small>{{ r.klinik.ad }}</small></td>
+    <td>{{ r.doktor.tam_ad }} <small>({{ r.doktor.uzmanlik }})</small><br><small>{{ r.klinik.ad }}</small></td>
     <td>{% for ilac in r.recete.ilaclar %}{{ ilac }}{{ '<br>'|safe if not loop.last }}{% endfor %}</td>
     <td>{{ r.recete.doktor_notu or '-' }}</td>
   </tr>

@@ -33,18 +33,46 @@
 
 <div class="kart"><b>Personeli kliniğe ata</b>
 <form method="post" action="{{ url_for('admin_personel_ata') }}">
-  <select name="personel">{% for p in personeller %}<option value="{{ loop.index0 }}">{{ p.rol() }} · {{ p.tam_ad }}</option>{% endfor %}</select><br>
+  <select name="personel">{% for p in personeller %}<option value="{{ loop.index0 }}">{{ p.rol() }} · {{ p.tam_ad }}{{ ' (' ~ p.uzmanlik ~ ')' if p.rol() == 'Doktor' else ' (' ~ p.klinik_metni ~ ')' }}</option>{% endfor %}</select><br>
   <select name="klinik">{% for h, k in klinikler %}<option value="{{ loop.index0 }}">{{ h.ad }} / {{ k.ad }}</option>{% endfor %}</select>
   <button>Ata</button></form></div>
 
+<div class="kart"><b>Klinik seçerek doktora asistan bağla (en fazla 3)</b>
+<form method="get" action="{{ url_for('panel') }}">
+  1. Klinik:
+  <select name="ak" onchange="this.form.submit()">
+    {% for h, k in klinikler %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == secili_kl_sira }}>{{ h.ad }} / {{ k.ad }}</option>{% endfor %}
+  </select><br>
+  2. Doktor:
+  <select name="ad" onchange="this.form.submit()">
+    {% for _, d in klinik_doktorlari %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == secili_dr_sira }}>{{ d.tam_ad }} ({{ d.uzmanlik }}) · {{ d.asistanlar|length }}/3 asistan</option>{% endfor %}
+  </select>
+  <noscript><button>Seç</button></noscript>
+</form>
+{% if secili_doktor and uygun_asistanlar %}
+<form method="post" action="{{ url_for('admin_asistan_bagla') }}" style="margin-top:8px">
+  <input type="hidden" name="doktor" value="{{ klinik_doktorlari[secili_dr_sira][0] }}">
+  3. Asistan (bu klinikte ve bu doktora bağlı değil):<br>
+  <select name="asistan">
+    {% for a_sira, a in uygun_asistanlar %}
+    <option value="{{ a_sira }}">{{ a.tam_ad }} — {{ asistan_klinikleri[a.__repr__()|length and id(a) if false else loop.index0] if false else a.klinik_metni }}{{ ' (şu an: ' ~ a.doktor.tam_ad ~ ' - ' ~ a.doktor.uzmanlik ~ ')' if a.doktor else ' (boşta)' }}</option>
+    {% endfor %}
+  </select>
+  <button>Doktora bağla</button>
+</form>
+{% elif secili_doktor %}
+<p><small>Bu klinikte {{ secili_doktor.tam_ad }} ({{ secili_doktor.uzmanlik }}) için bağlanabilecek başka asistan yok.</small></p>
+{% endif %}
+</div>
+
 <div class="kart"><b>Asistanı doktora bağla / başka doktora taşı</b>
 <form method="post" action="{{ url_for('admin_asistan_bagla') }}">
-  <select name="asistan">{% for a in asistanlar %}<option value="{{ loop.index0 }}">{{ a.tam_ad }}{{ ' (şu an: ' ~ a.doktor.tam_ad ~ ')' if a.doktor }}</option>{% endfor %}</select><br>
-  <select name="doktor">{% for d in doktorlar %}<option value="{{ loop.index0 }}">{{ d.tam_ad }} ({{ d.uzmanlik }})</option>{% endfor %}</select>
+  <select name="asistan">{% for a in asistanlar %}<option value="{{ loop.index0 }}">{{ a.tam_ad }} ({{ a.klinik_metni }}){{ ' · şu an: ' ~ a.doktor.tam_ad ~ ' (' ~ a.doktor.uzmanlik ~ ')' if a.doktor }}</option>{% endfor %}</select><br>
+  <select name="doktor">{% for d in doktorlar %}<option value="{{ loop.index0 }}">{{ d.tam_ad }} ({{ d.uzmanlik }}) · {{ d.asistanlar|length }}/3</option>{% endfor %}</select>
   <button>Bağla</button></form>
   <small>Asistan ve doktor ortak bir klinikte olmalı. Bir doktorun en fazla 3 asistanı olabilir.</small>
   <form method="post" action="{{ url_for('admin_asistan_ayir') }}" style="margin-top:10px">
-    <select name="asistan">{% for a in asistanlar %}<option value="{{ loop.index0 }}">{{ a.tam_ad }}{{ ' (' ~ a.doktor.tam_ad ~ ')' if a.doktor }}</option>{% endfor %}</select>
+    <select name="asistan">{% for a in asistanlar %}<option value="{{ loop.index0 }}">{{ a.tam_ad }} ({{ a.klinik_metni }}){{ ' · ' ~ a.doktor.tam_ad ~ ' (' ~ a.doktor.uzmanlik ~ ')' if a.doktor }}</option>{% endfor %}</select>
     <button class="tehlike">Doktordan ayır</button></form></div>
 </div>
 
@@ -53,8 +81,8 @@
 <details class="kart"><summary><b style="display:inline">{{ h.ad }}</b> <small>({{ h.acilis.strftime('%H:%M') }}-{{ h.kapanis.strftime('%H:%M') }}) · {{ h.klinikler|length }} klinik</small></summary>
   {% for k in h.klinikler %}
   <div style="margin:8px 0 8px 12px"><b>{{ k.ad }}</b><br>
-    {% for d in k.doktorlar %}<span class="etiket">{{ d.tam_ad }}{{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</span>{% endfor %}
-    {% for p in k.personeller %}<span class="etiket">{{ p.rol() }}: {{ p.tam_ad }}{{ ' → ' ~ p.doktor.tam_ad if p.doktor }}</span>{% endfor %}<br>
+    {% for d in k.doktorlar %}<span class="etiket">{{ d.tam_ad }} ({{ d.uzmanlik }}){{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</span>{% endfor %}
+    {% for p in k.personeller %}<span class="etiket">{{ p.rol() }}: {{ p.tam_ad }} ({{ p.klinik_metni }}){{ ' → ' ~ p.doktor.tam_ad ~ ' (' ~ p.doktor.uzmanlik ~ ')' if p.doktor }}</span>{% endfor %}<br>
     {% for s in k.hizmetler %}<span class="etiket">{{ s.ad }} ({{ s.ucret }} TL)</span>{% else %}<small>Hizmet yok</small>{% endfor %}
   </div>
   {% endfor %}</details>
@@ -65,7 +93,7 @@
   <tr><th>Tarih</th><th>Hastane / Klinik</th><th>Doktor</th><th>Hasta</th><th>Hizmet</th><th>Durum</th></tr>
   {% for r in randevular %}
   <tr><td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td><td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
-  <td>{{ r.doktor.tam_ad }}</td><td>{{ r.hasta.tam_ad }}</td><td>{{ r.hizmet.ad }}</td>
+  <td>{{ r.doktor.tam_ad }} <small>({{ r.doktor.uzmanlik }})</small></td><td>{{ r.hasta.tam_ad }}</td><td>{{ r.hizmet.ad }}</td>
   <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span></td></tr>
   {% else %}<tr><td colspan="6">Randevu yok.</td></tr>{% endfor %}
 </table>

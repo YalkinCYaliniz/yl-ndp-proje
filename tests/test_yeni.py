@@ -294,11 +294,11 @@ class YeniArayuzTest(unittest.TestCase):
         self.assertIn("Hizmet seçin", sonra)
 
     def test_doktor_hizmet_secimi_hasta_ekranini_etkiler(self):
-        self.giris(3)       # Ayşe
-        ayse = uygulama_modulu.uyg.kullanicilar[3]
-        kardiyoloji = ayse.klinikler[1]
-        self.istemci.post("/doktor/hizmetler", data={"klinik": 1, "hizmet": ["1"]})   # sadece Kolesterol
-        self.assertEqual([h.ad for h in ayse.sunulan_hizmetler(kardiyoloji)], ["Kolesterol Tahlili"])
+        self.giris(4)       # Can (Kardiyoloji)
+        can = uygulama_modulu.uyg.kullanicilar[4]
+        kardiyoloji = can.klinikler[0]
+        self.istemci.post("/doktor/hizmetler", data={"klinik": 0, "hizmet": ["1"]})   # sadece Kolesterol
+        self.assertEqual([h.ad for h in can.sunulan_hizmetler(kardiyoloji)], ["Kolesterol Tahlili"])
         self.istemci.get("/cikis")
         self.giris(1)
         sayfa = self.istemci.get("/panel?h=0&k=1&d=0").get_data(as_text=True)
@@ -348,6 +348,28 @@ class YeniArayuzTest(unittest.TestCase):
         sayfa = self.istemci.get("/?grup=personel&q=ayse").get_data(as_text=True)
         self.assertIn("Ayşe Yılmaz", sayfa)
         self.assertNotIn("Zeynep Acar", sayfa)
+
+    def test_doktor_ve_admin_klinikten_asistan_ekler(self):
+        # Elif şu an Ayşe'ye bağlı (Merkez / Dahiliye). Önce ayıralım, sonra doktor kendi panelinden bağlasın.
+        self.giris(0)
+        uyg = uygulama_modulu.uyg
+        elif_ = uyg.kullanicilar[5]
+        ayse = uyg.kullanicilar[3]
+        asistanlar = [p for p in uygulama_modulu.personeller() if isinstance(p, Asistan)]
+        self.istemci.post("/admin/asistan-ayir", data={"asistan": asistanlar.index(elif_)})
+        self.assertIsNone(elif_.doktor)
+        # Admin panelinde klinik=0, doktor=0 seçildiğinde Elif uygun asistanlarda görünür
+        admin_sayfa = self.istemci.get("/panel?ak=0&ad=0").get_data(as_text=True)
+        self.assertIn("Elif Aydın", admin_sayfa)
+        self.assertIn("Dahiliye", admin_sayfa)
+        # Doktor kendi panelinden kliniğindeki boşta olan Elif'i kendine bağlar
+        self.istemci.get("/cikis")
+        self.giris(3)
+        dr_sayfa = self.istemci.get("/panel").get_data(as_text=True)
+        self.assertIn("Kliniğimden Asistan Ekle", dr_sayfa)
+        self.assertIn("Elif Aydın (Dahiliye)", dr_sayfa)
+        self.istemci.post("/doktor/asistan-ekle", data={"asistan": uygulama_modulu.personeller().index(elif_)})
+        self.assertIs(elif_.doktor, ayse)
 
     def test_yeni_sayfalar_emoji_icermez(self):
         import re

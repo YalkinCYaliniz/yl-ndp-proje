@@ -147,9 +147,20 @@ class SaglikPersoneli(Kullanici):
 
     def __init__(self, ad, soyad, tc_no, uzmanlik: str):
         super().__init__(ad, soyad, tc_no)
+        self._uzmanlik = None
         self.uzmanlik = uzmanlik
         self._klinikler = []     # bir personel birden fazla kliniğe bağlı olabilir
         self._musaitlik = []     # (baslangic datetime, bitis datetime)
+
+    @property
+    def uzmanlik(self) -> str:
+        return self._uzmanlik
+
+    @uzmanlik.setter
+    def uzmanlik(self, deger: str):
+        if not deger or not deger.strip():
+            raise ValueError("Uzmanlık alanı boş olamaz.")
+        self._uzmanlik = deger.strip()
 
     def rol(self) -> str:
         return "Sağlık Personeli"
@@ -181,6 +192,13 @@ class SaglikPersoneli(Kullanici):
     @property
     def klinikler(self) -> tuple:
         return tuple(self._klinikler)    # dışarıya salt okunur
+
+    @property
+    def klinik_metni(self) -> str:
+        """Personelin bağlı olduğu kliniklerin kısa metni."""
+        if not self._klinikler:
+            return "Klinik atanmadı"
+        return ", ".join(k.ad for k in self._klinikler)
 
     @property
     def hizmetler(self) -> list:
@@ -251,6 +269,10 @@ class Doktor(SaglikPersoneli):
     def klinige_ata(self, klinik) -> None:     # overriding: doktorlar ayrı listede tutulur
         klinik.doktor_ekle(self)
 
+    def klinige_uygun_mu(self, klinik) -> bool:
+        """Doktor sadece kendi uzmanlık alanındaki kliniklerde hasta bakabilir."""
+        return self.uzmanlik.lower() == klinik.ad.lower()
+
     @property
     def asistanlar(self) -> tuple:
         return tuple(self._asistanlar)
@@ -276,7 +298,12 @@ class Doktor(SaglikPersoneli):
             self._asistanlar.remove(asistan)
 
     def yetkiler(self) -> list[str]:
-        return super().yetkiler() + ["randevu_onayla", "recete_yaz", "hizmet_sec"]
+        return super().yetkiler() + ["randevu_onayla", "recete_yaz", "hizmet_sec", "asistan_ekle"]
+
+    def asistan_ekle(self, asistan) -> None:
+        """Doktor kendi kliniğindeki bir asistanı (en fazla 3) kendisine bağlar."""
+        self._yetki_kontrol("asistan_ekle")
+        asistan.doktora_bagla(self)
 
     # ---- Doktorun sunduğu hizmetler (kliniğin hizmetlerinden seçilir) ----
     def hizmet_tanimla(self, klinik, hizmetler) -> None:

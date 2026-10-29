@@ -92,7 +92,7 @@ class ArayuzTest(unittest.TestCase):
 
     def test_hasta_birden_fazla_asistani_gorur(self):
         self.giris(1)
-        sayfa = self.istemci.get("/panel?h=0&k=1&d=1").get_data(as_text=True)    # Merkez/Kardiyoloji/Can
+        sayfa = self.istemci.get("/panel?h=0&k=1&d=0").get_data(as_text=True)    # Merkez/Kardiyoloji/Can
         self.assertIn("Asistan: Burak Şen, Derya Kurt", sayfa)
 
     def test_admin_personel_kaydeder_ve_ayni_tc_reddedilir(self):

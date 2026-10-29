@@ -9,7 +9,8 @@ from randevu.depo import Depo
 from randevu.guvenlik import Sifre
 from randevu.hatalar import SistemHatasi
 from randevu.kullanici import Hasta, Misafir
-from randevu.uygulama import Uygulama, ornek_veri, VARSAYILAN_SIFRE
+from randevu.ornek_veri import ornek_veri
+from randevu.uygulama import Uygulama, VARSAYILAN_SIFRE
 
 
 class SifreTest(unittest.TestCase):

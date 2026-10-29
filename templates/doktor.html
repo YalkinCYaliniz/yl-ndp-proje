@@ -21,11 +21,36 @@
       {% if r.durum.value == 'Bekliyor' %}
       <form class="satir" method="post" action="{{ url_for('doktor_onayla', sira=sira) }}"><button class="yesil">Onayla</button></form>
       <form class="satir" method="post" action="{{ url_for('doktor_reddet', sira=sira) }}"><button class="tehlike">Reddet</button></form>
+      {% elif r.durum.value == 'Onaylandı' %}
+      <details>
+        <summary>{{ 'Reçeteyi düzenle' if r.recete else 'Reçete yaz' }}</summary>
+        <form method="post" action="{{ url_for('doktor_recete', sira=sira) }}">
+          <textarea name="ilaclar" rows="4" cols="30" placeholder="Her satıra bir ilaç" required>{% if r.recete %}{{ r.recete.ilaclar | join('\n') }}{% endif %}</textarea><br>
+          <input name="doktor_notu" placeholder="Doktor notu" value="{{ r.recete.doktor_notu if r.recete }}" style="width:100%">
+          <button class="yesil">Kaydet</button>
+        </form>
+      </details>
       {% endif %}
     </td>
   </tr>
   {% else %}<tr><td colspan="6">Randevu yok.</td></tr>{% endfor %}
 </table>
+
+<h2>Sunduğum Hizmetler</h2>
+<p><small>Her klinikte kliniğin hizmetlerinden hangilerini verdiğinizi seçin. Hastalar sadece seçtiğiniz hizmetler için randevu alabilir.</small></p>
+<div class="izgara">
+{% for sira, hastane, klinik, hizmetler in klinik_hizmetleri %}
+  <form method="post" action="{{ url_for('doktor_hizmetler') }}" class="kart">
+    <b>{{ hastane.ad }} / {{ klinik.ad }}</b>
+    <input type="hidden" name="klinik" value="{{ sira }}">
+    {% for i, s, secili_mi in hizmetler %}
+      <label style="display:block"><input type="checkbox" name="hizmet" value="{{ i }}" {{ 'checked' if secili_mi }}>
+        {{ s.ad }} <small>({{ s.sure_dk }} dk, {{ s.ucret }} TL)</small></label>
+    {% endfor %}
+    <button>Kaydet</button>
+  </form>
+{% endfor %}
+</div>
 
 <h2>Takvimim <small>(yeşil: boş, kırmızı: dolu)</small></h2>
 {% if secenekler %}

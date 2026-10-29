@@ -4,6 +4,29 @@
 <div class="bilgi">Misafir olarak devam ediyorsunuz. Çıkış yaptığınızda bu randevuları tekrar göremezsiniz.
   <a href="{{ url_for('kayit') }}">Kayıt olun</a></div>
 {% endif %}
+<h2>Doktor veya Klinik Ara</h2>
+<form method="get" class="kart">
+  <input name="q" value="{{ aranan }}" placeholder="Doktor veya klinik adı (örn. kardiyoloji, ayşe)" style="width:60%">
+  <button>Ara</button>
+  {% if aranan %}<a href="{{ url_for('panel') }}" style="margin-left:8px">Aramayı temizle</a>{% endif %}
+</form>
+{% if aranan %}
+<table>
+  <tr><th>Hastane / Klinik</th><th>Doktor</th><th>Hizmet</th><th>En yakın boş randevu</th><th></th></tr>
+  {% for s in sonuclar %}
+  <tr>
+    <td>{{ s.hastane.ad }}<br><small>{{ s.klinik.ad }}</small></td>
+    <td>{{ s.doktor.tam_ad }}<br><small>{{ s.doktor.uzmanlik }}</small>
+        {% if s.doktor.asistanlar %}<br><span class="asistan">{{ s.doktor.asistan_metni }}</span>{% endif %}</td>
+    <td>{{ s.hizmet.ad }}<br><small>{{ s.hizmet.sure_dk }} dk · {{ s.hizmet.ucret }} TL</small></td>
+    <td>{% if s.en_yakin %}<span class="slot bos" style="margin:0">{{ s.en_yakin.baslangic.strftime('%d.%m.%Y %H:%M') }}</span>
+        {% else %}<span class="rozet iptal">Boş randevu yok</span>{% endif %}</td>
+    <td>{% if s.en_yakin %}<a href="{{ url_for('panel', h=s.hastane_sira, k=s.klinik_sira, d=s.doktor_sira, s=s.hizmet_sira, tarih=s.en_yakin.baslangic.date().isoformat()) }}"><button type="button">Saatleri gör</button></a>{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="5">Sonuç bulunamadı.</td></tr>{% endfor %}
+</table>
+{% endif %}
+
 <h2>Randevu Al</h2>
 <form method="get" class="kart">
   <select name="h" onchange="this.form.submit()">
@@ -21,9 +44,11 @@
     <option value="">Doktor seçin</option>
     {% for d in secim.klinik.doktorlar %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('d') == loop.index0|string }}>{{ d.tam_ad }} ({{ d.uzmanlik }}){{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</option>{% endfor %}
   </select>
+  {% endif %}
+  {% if secim.doktor %}
   <select name="s" onchange="this.form.submit()">
     <option value="">Hizmet seçin</option>
-    {% for s in secim.klinik.hizmetler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('s') == loop.index0|string }}>{{ s.ad }} · {{ s.tur() }} · {{ s.sure_dk }} dk · {{ s.ucret }} TL</option>{% endfor %}
+    {% for s in secim.hizmetler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('s') == loop.index0|string }}>{{ s.ad }} · {{ s.tur() }} · {{ s.sure_dk }} dk · {{ s.ucret }} TL</option>{% endfor %}
   </select>
   {% endif %}
   <noscript><button>Devam</button></noscript>
@@ -86,5 +111,18 @@
     </td>
   </tr>
   {% else %}<tr><td colspan="7">Henüz randevunuz yok.</td></tr>{% endfor %}
+</table>
+
+<h2>Reçetelerim</h2>
+<table>
+  <tr><th>Tarih</th><th>Doktor</th><th>İlaçlar</th><th>Doktor notu</th></tr>
+  {% for r in receteler %}
+  <tr>
+    <td>{{ r.recete.tarih.strftime('%d.%m.%Y %H:%M') }}</td>
+    <td>{{ r.doktor.tam_ad }}<br><small>{{ r.klinik.ad }}</small></td>
+    <td>{% for ilac in r.recete.ilaclar %}{{ ilac }}{{ '<br>'|safe if not loop.last }}{% endfor %}</td>
+    <td>{{ r.recete.doktor_notu or '-' }}</td>
+  </tr>
+  {% else %}<tr><td colspan="4">Henüz reçeteniz yok.</td></tr>{% endfor %}
 </table>
 {% endblock %}

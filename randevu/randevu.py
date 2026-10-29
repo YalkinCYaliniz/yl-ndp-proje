@@ -21,7 +21,7 @@ class Randevu:
     """Tek bir randevu: hasta, hastane, klinik, doktor, hizmet ve tarih-saat."""
 
     def __init__(self, hasta, hastane, klinik, doktor, hizmet, baslangic,
-                 durum=None, odenen_tutar=None):
+                 durum=None, odenen_tutar=None, recete=None):
         self.hasta = hasta
         self.hastane = hastane
         self.klinik = klinik
@@ -31,6 +31,17 @@ class Randevu:
         # Yeni randevu bekler; dosyadan yüklenirken durum ve ödeme verilir
         self._durum = durum or RandevuDurumu.BEKLIYOR
         self._odenen_tutar = odenen_tutar   # ödeme yapılınca dolar
+        self._recete = recete               # doktor yazınca dolar
+
+    @property
+    def recete(self):
+        return self._recete
+
+    def recete_ekle(self, recete) -> None:
+        """Sadece onaylı randevuya reçete yazılabilir; yenisi eskisinin yerine geçer."""
+        if self._durum != RandevuDurumu.ONAYLANDI:
+            raise RandevuHatasi("Sadece onaylı randevu için reçete yazılabilir.")
+        self._recete = recete
 
     @property
     def odendi_mi(self) -> bool:
@@ -162,6 +173,17 @@ class RandevuSistemi:
                 zaman += sure
         return slotlar
 
+    def en_yakin_bos(self, hastane, doktor, hizmet, sonra):
+        """'sonra' zamanından itibaren doktorun ilk boş saatini (Slot) döndürür, yoksa None."""
+        gunler = sorted({b.date() for b, _ in doktor.musaitlik if b.date() >= sonra.date()})
+        for gun in gunler:
+            slotlar = sorted(self.saat_tablosu(hastane, doktor, hizmet, gun),
+                             key=lambda s: s.baslangic)
+            for slot in slotlar:
+                if not slot.dolu and slot.baslangic >= sonra:
+                    return slot
+        return None
+
     def randevu_olustur(self, hasta, hastane, klinik, doktor, hizmet, baslangic) -> Randevu:
         yeni = Randevu(hasta, hastane, klinik, doktor, hizmet, baslangic)
 
@@ -171,6 +193,8 @@ class RandevuSistemi:
             raise RandevuHatasi("Doktor bu klinikte çalışmıyor.")
         if hizmet not in klinik.hizmetler:
             raise RandevuHatasi("Bu hizmet seçilen klinikte verilmiyor.")
+        if not doktor.hizmet_sunar_mi(klinik, hizmet):
+            raise RandevuHatasi("Doktor bu hizmeti vermiyor.")
         if not hastane.acik_mi(yeni.baslangic, yeni.bitis):
             raise RandevuHatasi("Hastane bu saatte kapalı.")
         if not doktor.musait_mi(yeni.baslangic, yeni.bitis):

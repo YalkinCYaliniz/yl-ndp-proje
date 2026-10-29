@@ -8,6 +8,7 @@ from randevu.kullanici import (Hasta, Misafir, Doktor, Yonetici, Asistan, Hemsir
                                Teknisyen)
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import Randevu, RandevuDurumu
+from randevu.recete import Recete
 from randevu.uygulama import Uygulama, VARSAYILAN_SIFRE
 
 
@@ -39,6 +40,10 @@ class Depo:
                 "hizmetler": [s.sozluge() for s in k.hizmetler],   # çok biçimlilik
                 "doktorlar": [d.tc_no for d in k.doktorlar],
                 "personel": [p.tc_no for p in k.personeller],
+                # sadece hizmet seçimi yapmış doktorlar: {tc: [hizmet adları]}
+                "doktor_hizmetleri": {
+                    d.tc_no: [s.ad for s in d.ozel_hizmetler(k)]
+                    for d in k.doktorlar if d.ozel_hizmetler(k) is not None},
             } for k in h.klinikler],
         }
 
@@ -48,6 +53,7 @@ class Depo:
             "doktor": r.doktor.tc_no, "hizmet": r.hizmet.ad,
             "baslangic": r.baslangic.isoformat(), "durum": r.durum.name,
             "odenen_tutar": r.odenen_tutar,
+            "recete": r.recete.sozluge() if r.recete else None,
         }
 
     # ---------------- YÜKLE ----------------
@@ -76,6 +82,9 @@ class Depo:
                     klinik.doktor_ekle(kisiler[tc])
                 for tc in k.get("personel", []):
                     klinik.personel_ekle(kisiler[tc])
+                for tc, adlar in k.get("doktor_hizmetleri", {}).items():
+                    kisiler[tc].hizmet_tanimla(
+                        klinik, [s for s in klinik.hizmetler if s.ad in adlar])
 
         # Asistan-doktor bağlantıları klinik atamalarından sonra kurulur
         for k in veri["kullanicilar"]:
@@ -89,7 +98,8 @@ class Depo:
             uyg.sistem.randevu_yukle(Randevu(
                 kisiler[r["hasta"]], hastane, klinik, kisiler[r["doktor"]], hizmet,
                 datetime.fromisoformat(r["baslangic"]),
-                RandevuDurumu[r["durum"]], r["odenen_tutar"]))
+                RandevuDurumu[r["durum"]], r["odenen_tutar"],
+                Recete.sozlukten(r["recete"]) if r.get("recete") else None))
         return uyg
 
     def _kimlik_yukle(self, kisi, k: dict, varsayilan) -> None:

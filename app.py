@@ -1,5 +1,5 @@
 """Flask arayüzü: iş mantığı randevu/ paketinde, burada sadece sayfalar var."""
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 
@@ -8,14 +8,16 @@ from randevu.kullanici import (Hasta, Doktor, Yonetici, SaglikPersoneli, Asistan
                                Hemsire, Teknisyen)
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.odeme import NakitOdeme, KartOdeme, SigortaOdeme
+from randevu.arama import Arama, sadelestir
 from randevu.depo import Depo
-from randevu.uygulama import ornek_veri, VARSAYILAN_SIFRE
+from randevu.ornek_veri import ornek_veri
+from randevu.uygulama import VARSAYILAN_SIFRE
 
 app = Flask(__name__)
 app.secret_key = "ndp-proje-gelistirme"
 depo = Depo("veri.json")
 # Kayıt dosyası varsa oradan yükle, yoksa örnek veriyle başla
-uyg = depo.yukle() if depo.var_mi() else ornek_veri()
+uyg = depo.yukle() if depo.var_mi() else ornek_veri(date.today() + timedelta(days=1))
 
 ODEMELER = {"nakit": NakitOdeme(), "kart": KartOdeme(3), "sigorta": SigortaOdeme()}
 
@@ -79,8 +81,12 @@ def giris():
         liste.sort(key=lambda cift: ROL_SIRASI.index(cift[1].rol()))
         if secili_rol in ROL_SIRASI:
             liste = [(sira, k) for sira, k in liste if k.rol() == secili_rol]
+    isim = request.args.get("q", "").strip()
+    if isim and secili:
+        aranan = sadelestir(isim)
+        liste = [(sira, k) for sira, k in liste if aranan in sadelestir(k.tam_ad)]
     return render_template("giris.html", gruplar=gruplar, secili=secili, liste=liste,
-                           kategoriler=kategoriler, secili_rol=secili_rol,
+                           kategoriler=kategoriler, secili_rol=secili_rol, isim=isim,
                            baslik=GRUPLAR[secili][0] if secili in GRUPLAR else "")
 
 
@@ -166,7 +172,8 @@ def panel():
 # ---------------- HASTA ----------------
 def hasta_sayfasi(hasta: Hasta):
     ara = request.args
-    secim = {"hastane": None, "klinik": None, "doktor": None, "hizmet": None, "slotlar": None, "gunler": None}
+    secim = {"hastane": None, "klinik": None, "doktor": None, "hizmet": None, "slotlar": None, "gunler": None,
+             "hizmetler": []}
     try:
         if ara.get("h"):
             secim["hastane"] = uyg.kurum.hastaneler[int(ara["h"])]
@@ -174,8 +181,11 @@ def hasta_sayfasi(hasta: Hasta):
             secim["klinik"] = secim["hastane"].klinikler[int(ara["k"])]
         if ara.get("d") and secim["klinik"]:
             secim["doktor"] = secim["klinik"].doktorlar[int(ara["d"])]
-        if ara.get("s") and secim["klinik"]:
-            secim["hizmet"] = secim["klinik"].hizmetler[int(ara["s"])]
+        if secim["doktor"]:
+            # doktorun bu klinikte sunduğu hizmetler
+            secim["hizmetler"] = secim["doktor"].sunulan_hizmetler(secim["klinik"])
+        if ara.get("s") and secim["doktor"]:
+            secim["hizmet"] = secim["hizmetler"][int(ara["s"])]
         if secim["doktor"] and secim["hizmet"]:
             secim["gunler"] = uyg.sistem.musait_gunler(
                 secim["hastane"], secim["doktor"], secim["hizmet"])
@@ -185,8 +195,12 @@ def hasta_sayfasi(hasta: Hasta):
                 secim["hastane"], secim["doktor"], secim["hizmet"], gun)
     except (ValueError, IndexError):
         flash("Geçersiz seçim.", "hata")
+    aranan = ara.get("q", "").strip()
+    sonuclar = Arama(uyg).ara(aranan) if aranan else []
     randevular = uyg.sistem.hastanin_randevulari(hasta)
     return render_template("hasta.html", kullanici=hasta, secim=secim, ara=ara,
+                           aranan=aranan, sonuclar=sonuclar,
+                           receteler=hasta.receteli_randevularim(uyg.sistem),
                            hastaneler=uyg.kurum.hastaneler,
                            randevular=[(uyg.sistem.randevular.index(r), r) for r in randevular])
 
@@ -199,8 +213,10 @@ def randevu_al():
     def islem():
         hastane = uyg.kurum.hastaneler[int(f["h"])]
         klinik = hastane.klinikler[int(f["k"])]
-        hasta.randevu_al(uyg.sistem, hastane, klinik, klinik.doktorlar[int(f["d"])],
-                         klinik.hizmetler[int(f["s"])], datetime.fromisoformat(f["zaman"]))
+        doktor = klinik.doktorlar[int(f["d"])]
+        hasta.randevu_al(uyg.sistem, hastane, klinik, doktor,
+                         doktor.sunulan_hizmetler(klinik)[int(f["s"])],
+                         datetime.fromisoformat(f["zaman"]))
     calistir(islem, "Randevu oluşturuldu, doktor onayı bekleniyor.")
     return redirect(url_for("panel"))
 
@@ -232,7 +248,7 @@ def doktor_sayfasi(doktor: Doktor):
     randevular = uyg.sistem.doktorun_randevulari(doktor)
     # Takvim için (hastane, klinik, hizmet) seçenekleri: saat adımı hizmet süresine göre
     secenekler = [(h, k, s) for h in uyg.kurum.hastaneler for k in h.klinikler
-                  if doktor in k.doktorlar for s in k.hizmetler]
+                  if doktor in k.doktorlar for s in doktor.sunulan_hizmetler(k)]
     takvim = []
     secili = 0
     if secenekler:
@@ -245,7 +261,14 @@ def doktor_sayfasi(doktor: Doktor):
         gunler = sorted({b.date() for b, _ in doktor.musaitlik})
         takvim = [(gun, uyg.sistem.saat_tablosu(hastane, doktor, hizmet, gun)) for gun in gunler]
     musaitlikler = sorted(enumerate(doktor.musaitlik), key=lambda cift: cift[1][0])
+    klinik_hizmetleri = []              # "Sunduğum hizmetler" formu için
+    for sira, klinik in enumerate(doktor.klinikler):
+        hastane = next(h for h in uyg.kurum.hastaneler if klinik in h.klinikler)
+        sunulan = doktor.sunulan_hizmetler(klinik)
+        klinik_hizmetleri.append((sira, hastane, klinik,
+                                  [(i, s, s in sunulan) for i, s in enumerate(klinik.hizmetler)]))
     return render_template("doktor.html", kullanici=doktor, secenekler=secenekler,
+                           klinik_hizmetleri=klinik_hizmetleri,
                            musaitlikler=musaitlikler,
                            secili=secili, takvim=takvim,
                            randevular=[(uyg.sistem.randevular.index(r), r) for r in randevular])
@@ -271,6 +294,29 @@ def doktor_musaitlik():
     calistir(lambda: simdiki_kullanici().musaitlik_ekle(
         datetime.fromisoformat(f["baslangic"]), datetime.fromisoformat(f["bitis"])),
         "Müsaitlik eklendi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/doktor/hizmetler")
+def doktor_hizmetler():
+    """Doktor, bir klinikte vereceği hizmetleri seçer."""
+    doktor = simdiki_kullanici()
+    f = request.form
+
+    def islem():
+        klinik = doktor.klinikler[int(f["klinik"])]
+        doktor.hizmetlerimi_sec(klinik, [klinik.hizmetler[int(i)] for i in f.getlist("hizmet")])
+    calistir(islem, "Sunduğunuz hizmetler güncellendi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/doktor/recete/<int:sira>")
+def doktor_recete(sira):
+    """Doktor, onaylı randevu için reçete yazar. İlaçlar satır satır girilir."""
+    f = request.form
+    calistir(lambda: simdiki_kullanici().recete_yaz(
+        uyg.sistem.randevular[sira], f.get("ilaclar", "").splitlines(), f.get("doktor_notu", "")),
+        "Reçete kaydedildi.")
     return redirect(url_for("panel"))
 
 

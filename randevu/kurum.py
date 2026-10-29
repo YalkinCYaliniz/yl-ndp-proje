@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from datetime import time
 
-from randevu.hatalar import BulunamadiHatasi
+from randevu.hatalar import BulunamadiHatasi, SistemHatasi
 
 
 class Hizmet(ABC):
@@ -85,6 +85,9 @@ class Klinik:
         self._personel = []         # doktor dışındaki personel (asistan, hemşire...)
 
     def hizmet_ekle(self, hizmet: Hizmet) -> None:
+        for mevcut in self._hizmetler:
+            if mevcut.ad == hizmet.ad:
+                raise SistemHatasi(f"'{hizmet.ad}' hizmeti bu klinikte zaten var.")
         self._hizmetler.append(hizmet)
 
     def doktor_ekle(self, doktor) -> None:

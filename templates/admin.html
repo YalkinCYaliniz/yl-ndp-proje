@@ -50,14 +50,14 @@
 
 <h2>Yapı</h2>
 {% for h in hastaneler %}
-<div class="kart"><b>{{ h.ad }} <small>({{ h.acilis.strftime('%H:%M') }}-{{ h.kapanis.strftime('%H:%M') }})</small></b>
+<details class="kart"><summary><b style="display:inline">{{ h.ad }}</b> <small>({{ h.acilis.strftime('%H:%M') }}-{{ h.kapanis.strftime('%H:%M') }}) · {{ h.klinikler|length }} klinik</small></summary>
   {% for k in h.klinikler %}
   <div style="margin:8px 0 8px 12px"><b>{{ k.ad }}</b><br>
     {% for d in k.doktorlar %}<span class="etiket">{{ d.tam_ad }}{{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</span>{% endfor %}
     {% for p in k.personeller %}<span class="etiket">{{ p.rol() }}: {{ p.tam_ad }}{{ ' → ' ~ p.doktor.tam_ad if p.doktor }}</span>{% endfor %}<br>
     {% for s in k.hizmetler %}<span class="etiket">{{ s.ad }} ({{ s.ucret }} TL)</span>{% else %}<small>Hizmet yok</small>{% endfor %}
   </div>
-  {% endfor %}</div>
+  {% endfor %}</details>
 {% endfor %}
 
 <h2>Tüm Randevular</h2>

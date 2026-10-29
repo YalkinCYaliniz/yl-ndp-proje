@@ -2,7 +2,7 @@
 import unittest
 
 import app as uygulama_modulu
-from randevu.uygulama import ornek_veri
+from randevu.ornek_veri import ornek_veri
 
 
 class ArayuzTest(unittest.TestCase):

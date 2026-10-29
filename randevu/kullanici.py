@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from randevu.guvenlik import Sifre
 from randevu.hatalar import RandevuHatasi, SistemHatasi, YetkiHatasi
+from randevu.recete import Recete
 
 _TR = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
 
@@ -112,6 +113,11 @@ class Hasta(Kullanici):
     def randevularim(self, sistem) -> list:
         """Hastanın kendi randevu geçmişi."""
         return sistem.hastanin_randevulari(self)
+
+    def receteli_randevularim(self, sistem) -> list:
+        """Reçete yazılmış randevular (en yeni üstte)."""
+        liste = [r for r in self.randevularim(sistem) if r.recete is not None]
+        return sorted(liste, key=lambda r: r.recete.tarih, reverse=True)
 
     def randevu_iptal(self, randevu) -> None:
         self._yetki_kontrol("randevu_iptal")
@@ -237,6 +243,7 @@ class Doktor(SaglikPersoneli):
     def __init__(self, ad, soyad, tc_no, uzmanlik: str):
         super().__init__(ad, soyad, tc_no, uzmanlik)
         self._asistanlar = []
+        self._klinik_hizmetleri = {}    # klinik -> doktorun o klinikte verdiği hizmetler
 
     def rol(self) -> str:        # Çok biçimlilik: method overriding
         return "Doktor"
@@ -269,7 +276,55 @@ class Doktor(SaglikPersoneli):
             self._asistanlar.remove(asistan)
 
     def yetkiler(self) -> list[str]:
-        return super().yetkiler() + ["randevu_onayla", "recete_yaz"]
+        return super().yetkiler() + ["randevu_onayla", "recete_yaz", "hizmet_sec"]
+
+    # ---- Doktorun sunduğu hizmetler (kliniğin hizmetlerinden seçilir) ----
+    def hizmet_tanimla(self, klinik, hizmetler) -> None:
+        """Doktorun bu klinikte vereceği hizmetleri belirler."""
+        if klinik not in self._klinikler:
+            raise SistemHatasi("Doktor bu klinikte çalışmıyor.")
+        hizmetler = list(hizmetler)
+        if not hizmetler:
+            raise SistemHatasi("En az bir hizmet seçilmelidir.")
+        for hizmet in hizmetler:
+            if hizmet not in klinik.hizmetler:
+                raise SistemHatasi(f"'{hizmet.ad}' bu kliniğin hizmeti değil.")
+        self._klinik_hizmetleri[klinik] = tuple(hizmetler)
+
+    def hizmetlerimi_sec(self, klinik, hizmetler) -> None:
+        """Doktorun kendi hizmetlerini seçmesi (yetki kontrollü)."""
+        self._yetki_kontrol("hizmet_sec")
+        self.hizmet_tanimla(klinik, hizmetler)
+
+    def ozel_hizmetler(self, klinik):
+        """Seçim yapıldıysa o klinikteki seçili hizmetler, yapılmadıysa None."""
+        return self._klinik_hizmetleri.get(klinik)
+
+    def sunulan_hizmetler(self, klinik) -> list:
+        """Seçim yoksa kliniğin tüm hizmetleri; varsa sadece seçilenler."""
+        ozel = self._klinik_hizmetleri.get(klinik)
+        if ozel is None:
+            return list(klinik.hizmetler)
+        return [h for h in klinik.hizmetler if h in ozel]
+
+    def hizmet_sunar_mi(self, klinik, hizmet) -> bool:
+        return hizmet in self.sunulan_hizmetler(klinik)
+
+    @property
+    def hizmetler(self) -> list:        # overriding: tüm kliniklerde sunduğu hizmetler
+        sonuc = []
+        for klinik in self._klinikler:
+            sonuc.extend(self.sunulan_hizmetler(klinik))
+        return sonuc
+
+    def recete_yaz(self, randevu, ilaclar, doktor_notu: str = "") -> Recete:
+        """Kendi onaylı randevusu için reçete yazar (varsa günceller)."""
+        self._yetki_kontrol("recete_yaz")
+        if randevu.doktor is not self:
+            raise YetkiHatasi("Sadece kendi hastalarınız için reçete yazabilirsiniz.")
+        recete = Recete(ilaclar, doktor_notu)
+        randevu.recete_ekle(recete)
+        return recete
 
 
 class Asistan(SaglikPersoneli):
@@ -365,7 +420,12 @@ class Yonetici(Kullanici):
 
     def yetkiler(self) -> list[str]:
         return ["hastane_ekle", "klinik_ekle", "doktor_ekle", "hizmet_ekle", "randevu_ekle",
-                "personel_kaydet", "personel_ata", "asistan_bagla"]
+                "personel_kaydet", "personel_ata", "asistan_bagla", "doktor_hizmet_tanimla"]
+
+    def doktor_hizmet_tanimla(self, doktor, klinik, hizmetler) -> None:
+        """Doktorun bir klinikte vereceği hizmetleri belirler."""
+        self._yetki_kontrol("doktor_hizmet_tanimla")
+        doktor.hizmet_tanimla(klinik, hizmetler)
 
     def personel_kaydet(self, uygulama, personel) -> None:
         self._yetki_kontrol("personel_kaydet")

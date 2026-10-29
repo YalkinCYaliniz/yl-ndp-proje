@@ -8,7 +8,7 @@ from randevu.hatalar import SistemHatasi
 from randevu.kullanici import Doktor, Hasta, Asistan
 from randevu.odeme import KartOdeme
 from randevu.randevu import RandevuDurumu
-from randevu.uygulama import ornek_veri
+from randevu.ornek_veri import ornek_veri
 
 
 class DepoTest(unittest.TestCase):

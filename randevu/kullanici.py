@@ -56,6 +56,14 @@ class Kullanici(ABC):
     def sifre_dogru_mu(self, duz_sifre: str) -> bool:
         return self.__sifre is not None and self.__sifre.dogru_mu(duz_sifre)
 
+    def kimlik_aktar(self, hedef: "Kullanici"):
+        """Rol değişiminde kullanıcı adı, e-posta ve şifre özetini yeni nesneye aktarır."""
+        hedef.kullanici_adi = self.kullanici_adi
+        hedef.eposta = self.eposta
+        if self.__sifre is not None:
+            hedef.sifre_belirle(self.__sifre)
+        return hedef
+
     @property
     def tc_no(self) -> str:
         return self.__tc_no
@@ -150,7 +158,6 @@ class SaglikPersoneli(Kullanici):
         self._uzmanlik = None
         self.uzmanlik = uzmanlik
         self._klinikler = []     # bir personel birden fazla kliniğe bağlı olabilir
-        self._musaitlik = []     # (baslangic datetime, bitis datetime)
 
     @property
     def uzmanlik(self) -> str:
@@ -166,7 +173,7 @@ class SaglikPersoneli(Kullanici):
         return "Sağlık Personeli"
 
     def yetkiler(self) -> list[str]:
-        return ["musaitlik_tanimla"]
+        return []
 
     def randevu_onayla(self, randevu) -> None:
         self._yetki_kontrol("randevu_onayla")
@@ -208,18 +215,38 @@ class SaglikPersoneli(Kullanici):
             sonuc.extend(klinik.hizmetler)
         return sonuc
 
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["uzmanlik"] = self.uzmanlik
+        return veri
+
+
+class Doktor(SaglikPersoneli):
+    MAX_ASISTAN = 3         # bir doktora en fazla bu kadar asistan bağlanabilir
+
+    def __init__(self, ad, soyad, tc_no, uzmanlik: str):
+        super().__init__(ad, soyad, tc_no, uzmanlik)
+        self._musaitlik = []            # (baslangic datetime, bitis datetime) — sadece doktora özel
+        self._asistanlar = []
+        self._klinik_hizmetleri = {}    # klinik -> doktorun o klinikte verdiği hizmetler
+
+    def rol(self) -> str:        # Çok biçimlilik: method overriding
+        return "Doktor"
+
+    def klinige_ata(self, klinik) -> None:     # overriding: doktorlar ayrı listede tutulur
+        klinik.doktor_ekle(self)
+
+    def klinige_uygun_mu(self, klinik) -> bool:
+        """Doktor sadece kendi uzmanlık alanındaki kliniklerde hasta bakabilir."""
+        return self.uzmanlik.lower() == klinik.ad.lower()
+
     @property
     def musaitlik(self) -> tuple:
         return tuple(self._musaitlik)
 
-    def sozluge(self) -> dict:
-        veri = super().sozluge()
-        veri["uzmanlik"] = self.uzmanlik
-        veri["musaitlik"] = [[b.isoformat(), s.isoformat()] for b, s in self._musaitlik]
-        return veri
-
     def musaitlik_ekle(self, baslangic, bitis) -> None:
         """Çalışılan zaman aralığı (datetime). Örn: 14.10.2026 09:00 - 12:00"""
+        self._yetki_kontrol("musaitlik_tanimla")
         if baslangic >= bitis:
             raise ValueError("Bitiş, başlangıçtan sonra olmalı.")
         for b, s in self._musaitlik:
@@ -232,10 +259,7 @@ class SaglikPersoneli(Kullanici):
         self._musaitlik.append((baslangic, bitis))
 
     def musaitlik_sil(self, sira: int, randevular) -> None:
-        """Müsaitliği siler. İçinde aktif randevu varsa silinemez.
-
-        randevular: bu personelin randevu listesi.
-        """
+        """Müsaitliği siler. İçinde aktif randevu varsa silinemez."""
         self._yetki_kontrol("musaitlik_tanimla")
         baslangic, bitis = self._musaitlik[sira]
         for r in randevular:
@@ -254,24 +278,10 @@ class SaglikPersoneli(Kullanici):
                 return True
         return False
 
-
-class Doktor(SaglikPersoneli):
-    MAX_ASISTAN = 3         # bir doktora en fazla bu kadar asistan bağlanabilir
-
-    def __init__(self, ad, soyad, tc_no, uzmanlik: str):
-        super().__init__(ad, soyad, tc_no, uzmanlik)
-        self._asistanlar = []
-        self._klinik_hizmetleri = {}    # klinik -> doktorun o klinikte verdiği hizmetler
-
-    def rol(self) -> str:        # Çok biçimlilik: method overriding
-        return "Doktor"
-
-    def klinige_ata(self, klinik) -> None:     # overriding: doktorlar ayrı listede tutulur
-        klinik.doktor_ekle(self)
-
-    def klinige_uygun_mu(self, klinik) -> bool:
-        """Doktor sadece kendi uzmanlık alanındaki kliniklerde hasta bakabilir."""
-        return self.uzmanlik.lower() == klinik.ad.lower()
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["musaitlik"] = [[b.isoformat(), s.isoformat()] for b, s in self._musaitlik]
+        return veri
 
     @property
     def asistanlar(self) -> tuple:
@@ -298,7 +308,7 @@ class Doktor(SaglikPersoneli):
             self._asistanlar.remove(asistan)
 
     def yetkiler(self) -> list[str]:
-        return super().yetkiler() + ["randevu_onayla", "recete_yaz", "hizmet_sec", "asistan_ekle"]
+        return ["musaitlik_tanimla", "randevu_onayla", "recete_yaz", "hizmet_sec", "asistan_ekle"]
 
     def asistan_ekle(self, asistan) -> None:
         """Doktor kendi kliniğindeki bir asistanı (en fazla 3) kendisine bağlar."""
@@ -440,18 +450,46 @@ class Teknisyen(SaglikPersoneli):
 
 
 class Yonetici(Kullanici):
-    """Admin: hastane, klinik, doktor, hizmet ve randevu ekleyebilir."""
+    """Genel Admin: kurumdaki tüm hastane, klinik, personel ve randevuları yönetir."""
 
     def rol(self) -> str:
         return "Admin"
 
     def yetkiler(self) -> list[str]:
         return ["hastane_ekle", "klinik_ekle", "doktor_ekle", "hizmet_ekle", "randevu_ekle",
-                "personel_kaydet", "personel_ata", "asistan_bagla", "doktor_hizmet_tanimla"]
+                "randevu_yonet", "personel_kaydet", "personel_ata", "asistan_bagla",
+                "doktor_hizmet_tanimla", "hastane_yoneticisi_ata", "klinik_yoneticisi_ata"]
+
+    @property
+    def kapsam_etiketi(self) -> str:
+        """Yöneticinin sorumlu olduğu birimin kısa metni (alt sınıflar ezer)."""
+        return "Tüm Kurum"
+
+    def yonetilen_hastaneler(self, kurum) -> tuple:
+        """Yöneticinin görebildiği ve yönetebildiği hastaneler."""
+        return kurum.hastaneler
+
+    def yonetilen_klinikler(self, kurum) -> list:
+        """Yöneticinin yönetebildiği (hastane, klinik) çiftleri."""
+        return [(h, k) for h in kurum.hastaneler for k in h.klinikler]
+
+    def yonetilen_randevular(self, sistem) -> list:
+        """Yöneticinin kapsamındaki randevular."""
+        return list(sistem.randevular)
+
+    def _hastane_kontrol(self, hastane) -> None:
+        """Alt sınıflar ezerek sadece kendi hastanelerine izin verir."""
+
+    def _klinik_kontrol(self, klinik) -> None:
+        """Alt sınıflar ezerek sadece kendi kliniklerine izin verir."""
+
+    def _asistan_baglanti_kontrol(self, asistan, doktor=None) -> None:
+        """Alt sınıflar ezerek sadece kendi kapsamındaki doktor/asistana izin verir."""
 
     def doktor_hizmet_tanimla(self, doktor, klinik, hizmetler) -> None:
         """Doktorun bir klinikte vereceği hizmetleri belirler."""
         self._yetki_kontrol("doktor_hizmet_tanimla")
+        self._klinik_kontrol(klinik)
         doktor.hizmet_tanimla(klinik, hizmetler)
 
     def personel_kaydet(self, uygulama, personel) -> None:
@@ -461,16 +499,19 @@ class Yonetici(Kullanici):
     def personel_ata(self, klinik, personel) -> None:
         """Her personel türünü kliniğe atar (doktor/asistan/hemşire...)."""
         self._yetki_kontrol("personel_ata")
+        self._klinik_kontrol(klinik)
         personel.klinige_ata(klinik)
 
     def asistan_bagla(self, asistan, doktor) -> None:
         """Asistanı doktora bağlar veya başka doktora taşır."""
         self._yetki_kontrol("asistan_bagla")
+        self._asistan_baglanti_kontrol(asistan, doktor)
         asistan.doktora_bagla(doktor)
 
     def asistan_ayir(self, asistan) -> None:
         """Asistanı bağlı olduğu doktordan ayırır."""
         self._yetki_kontrol("asistan_bagla")
+        self._asistan_baglanti_kontrol(asistan, asistan.doktor)
         asistan.doktordan_ayril()
 
     def hastane_ekle(self, kurum, hastane) -> None:
@@ -479,16 +520,240 @@ class Yonetici(Kullanici):
 
     def klinik_ekle(self, hastane, klinik) -> None:
         self._yetki_kontrol("klinik_ekle")
+        self._hastane_kontrol(hastane)
         hastane.klinik_ekle(klinik)
 
     def doktor_ekle(self, klinik, doktor) -> None:
         self._yetki_kontrol("doktor_ekle")
+        self._klinik_kontrol(klinik)
         klinik.doktor_ekle(doktor)
 
     def hizmet_ekle(self, klinik, hizmet) -> None:
         self._yetki_kontrol("hizmet_ekle")
+        self._klinik_kontrol(klinik)
         klinik.hizmet_ekle(hizmet)
 
     def randevu_ekle(self, sistem, hasta, hastane, klinik, doktor, hizmet, baslangic):
         self._yetki_kontrol("randevu_ekle")
+        self._hastane_kontrol(hastane)
+        self._klinik_kontrol(klinik)
         return sistem.randevu_olustur(hasta, hastane, klinik, doktor, hizmet, baslangic)
+
+    def randevu_onayla(self, randevu) -> None:
+        """Yönetici kendi kapsamındaki bekleyen randevuyu onaylar."""
+        self._yetki_kontrol("randevu_yonet")
+        self._hastane_kontrol(randevu.hastane)
+        self._klinik_kontrol(randevu.klinik)
+        randevu.onayla()
+
+    def randevu_reddet(self, randevu) -> None:
+        """Yönetici kendi kapsamındaki bekleyen randevuyu reddeder."""
+        self._yetki_kontrol("randevu_yonet")
+        self._hastane_kontrol(randevu.hastane)
+        self._klinik_kontrol(randevu.klinik)
+        randevu.reddet()
+
+    def randevu_iptal(self, randevu) -> None:
+        """Yönetici kendi kapsamındaki aktif randevuyu iptal eder."""
+        self._yetki_kontrol("randevu_yonet")
+        self._hastane_kontrol(randevu.hastane)
+        self._klinik_kontrol(randevu.klinik)
+        randevu.iptal()
+
+    # ---- Yönetici Atama ve Rol Değiştirme (Çok Biçimlilik) ----
+    def yonetilebilir_kullanicilar(self, uygulama) -> list:
+        """Bu yöneticinin rolünü değiştirebileceği kullanıcılar (sira, kullanici)."""
+        return [(sira, k) for sira, k in enumerate(uygulama.kullanicilar)
+                if type(k) in (Hasta, HastaneYoneticisi, KlinikYoneticisi) and k.kayitli_mi]
+
+    def _aday_kontrol(self, kisi) -> None:
+        if not (type(kisi) in (Hasta, HastaneYoneticisi, KlinikYoneticisi) and kisi.kayitli_mi):
+            raise SistemHatasi("Sadece normal kullanıcılar veya hastane/klinik yöneticileri seçilebilir.")
+
+    def hastane_yoneticisi_ata(self, uygulama, kisi, hastane):
+        """Normal kullanıcıyı veya alt yöneticiyi verilen hastaneye Hastane Yöneticisi yapar."""
+        self._yetki_kontrol("hastane_yoneticisi_ata")
+        self._aday_kontrol(kisi)
+        self._hastane_kontrol(hastane)
+        yeni = HastaneYoneticisi(kisi.ad, kisi.soyad, kisi.tc_no, hastane)
+        uygulama.kullanici_degistir(kisi, yeni)
+        return yeni
+
+    def klinik_yoneticisi_ata(self, uygulama, kisi, hastane, klinik):
+        """Normal kullanıcıyı veya alt yöneticiyi verilen kliniğe Klinik Yöneticisi yapar."""
+        self._yetki_kontrol("klinik_yoneticisi_ata")
+        self._aday_kontrol(kisi)
+        self._hastane_kontrol(hastane)
+        self._klinik_kontrol(klinik)
+        yeni = KlinikYoneticisi(kisi.ad, kisi.soyad, kisi.tc_no, hastane, klinik)
+        uygulama.kullanici_degistir(kisi, yeni)
+        return yeni
+
+    def yoneticilik_kaldir(self, uygulama, kisi):
+        """Hastane veya klinik yöneticisini tekrar normal kullanıcı (Hasta) rolüne döndürür."""
+        if isinstance(kisi, HastaneYoneticisi):
+            self._yetki_kontrol("hastane_yoneticisi_ata")
+        elif isinstance(kisi, KlinikYoneticisi):
+            self._yetki_kontrol("klinik_yoneticisi_ata")
+            self._aday_kontrol(kisi)
+        else:
+            raise SistemHatasi("Bu kullanıcı zaten yönetici değil.")
+        yeni = Hasta(kisi.ad, kisi.soyad, kisi.tc_no)
+        uygulama.kullanici_degistir(kisi, yeni)
+        return yeni
+
+    def rol_degistir(self, uygulama, kisi, yeni_rol: str, hastane=None, klinik=None):
+        """Seçilen hedefe göre kullanıcının rolünü değiştirir."""
+        if yeni_rol == "hastane_yoneticisi":
+            return self.hastane_yoneticisi_ata(uygulama, kisi, hastane)
+        if yeni_rol == "klinik_yoneticisi":
+            return self.klinik_yoneticisi_ata(uygulama, kisi, hastane, klinik)
+        if yeni_rol == "hasta":
+            return self.yoneticilik_kaldir(uygulama, kisi)
+        raise SistemHatasi("Geçersiz rol seçimi.")
+
+
+class HastaneYoneticisi(Yonetici):
+    """Sadece sorumlu olduğu hastaneyi yönetir; diğer hastanelere müdahale edemez."""
+
+    def __init__(self, ad: str, soyad: str, tc_no: str, hastane=None):
+        super().__init__(ad, soyad, tc_no)
+        self._hastane = hastane
+
+    @property
+    def hastane(self):
+        return self._hastane
+
+    def hastane_ata(self, hastane) -> None:
+        self._hastane = hastane
+
+    def rol(self) -> str:
+        return "Hastane Yöneticisi"
+
+    def yetkiler(self) -> list[str]:
+        return [y for y in super().yetkiler() if y not in ("hastane_ekle", "hastane_yoneticisi_ata")]
+
+    def yonetilebilir_kullanicilar(self, uygulama) -> list:
+        """Hastane yöneticisi sadece normal kullanıcıları ve kendi hastanesindeki klinik yöneticilerini seçebilir."""
+        return [(sira, k) for sira, k in enumerate(uygulama.kullanicilar)
+                if k.kayitli_mi and (type(k) is Hasta
+                                     or (type(k) is KlinikYoneticisi and k.hastane is self._hastane))]
+
+    def _aday_kontrol(self, kisi) -> None:
+        super()._aday_kontrol(kisi)
+        if isinstance(kisi, HastaneYoneticisi):
+            raise YetkiHatasi("Hastane yöneticisi başka bir hastane yöneticisini değiştiremez.")
+        if isinstance(kisi, KlinikYoneticisi) and kisi.hastane is not self._hastane:
+            raise YetkiHatasi("Sadece kendi hastanenizdeki klinik yöneticilerini değiştirebilirsiniz.")
+
+    @property
+    def kapsam_etiketi(self) -> str:
+        return self._hastane.ad if self._hastane else "Hastane atanmadı"
+
+    def yonetilen_hastaneler(self, kurum) -> tuple:
+        return (self._hastane,) if self._hastane else ()
+
+    def yonetilen_klinikler(self, kurum) -> list:
+        if self._hastane is None:
+            return []
+        return [(self._hastane, k) for k in self._hastane.klinikler]
+
+    def yonetilen_randevular(self, sistem) -> list:
+        return [r for r in sistem.randevular if r.hastane is self._hastane]
+
+    def _hastane_kontrol(self, hastane) -> None:
+        if self._hastane is None or hastane is not self._hastane:
+            raise YetkiHatasi("Sadece sorumlu olduğunuz hastaneyi yönetebilirsiniz.")
+
+    def _klinik_kontrol(self, klinik) -> None:
+        if self._hastane is None or klinik not in self._hastane.klinikler:
+            raise YetkiHatasi("Sadece sorumlu olduğunuz hastanedeki klinikleri yönetebilirsiniz.")
+
+    def _asistan_baglanti_kontrol(self, asistan, doktor=None) -> None:
+        if self._hastane is None:
+            raise YetkiHatasi("Sorumlu olduğunuz bir hastane tanımlı değil.")
+        if doktor is not None:
+            ortak = [k for k in self._hastane.klinikler
+                     if asistan in k.personeller and doktor in k.doktorlar]
+            if not ortak:
+                raise YetkiHatasi(
+                    "Asistan ve doktor sorumlu olduğunuz hastanenin ortak bir kliniğinde olmalı.")
+        elif not any(asistan in k.personeller for k in self._hastane.klinikler):
+            raise YetkiHatasi("Sadece sorumlu olduğunuz hastanedeki asistanları yönetebilirsiniz.")
+
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["hastane"] = self._hastane.ad if self._hastane else None
+        return veri
+
+
+class KlinikYoneticisi(Yonetici):
+    """Sadece sorumlu olduğu klinikteki doktor, personel, hizmet ve randevuları yönetir."""
+
+    def __init__(self, ad: str, soyad: str, tc_no: str, hastane=None, klinik=None):
+        super().__init__(ad, soyad, tc_no)
+        self._hastane = None
+        self._klinik = None
+        if hastane is not None and klinik is not None:
+            self.klinik_ata(hastane, klinik)
+
+    @property
+    def hastane(self):
+        return self._hastane
+
+    @property
+    def klinik(self):
+        return self._klinik
+
+    def klinik_ata(self, hastane, klinik) -> None:
+        if klinik not in hastane.klinikler:
+            raise SistemHatasi("Klinik bu hastaneye ait değil.")
+        self._hastane = hastane
+        self._klinik = klinik
+
+    def rol(self) -> str:
+        return "Klinik Yöneticisi"
+
+    def yetkiler(self) -> list[str]:
+        return [y for y in super().yetkiler()
+                if y not in ("hastane_ekle", "klinik_ekle", "hastane_yoneticisi_ata", "klinik_yoneticisi_ata")]
+
+    def yonetilebilir_kullanicilar(self, uygulama) -> list:
+        return []
+
+    @property
+    def kapsam_etiketi(self) -> str:
+        if self._hastane and self._klinik:
+            return f"{self._hastane.ad} / {self._klinik.ad}"
+        return "Klinik atanmadı"
+
+    def yonetilen_hastaneler(self, kurum) -> tuple:
+        return (self._hastane,) if self._hastane else ()
+
+    def yonetilen_klinikler(self, kurum) -> list:
+        if self._hastane is None or self._klinik is None:
+            return []
+        return [(self._hastane, self._klinik)]
+
+    def yonetilen_randevular(self, sistem) -> list:
+        return [r for r in sistem.randevular if r.klinik is self._klinik]
+
+    def _hastane_kontrol(self, hastane) -> None:
+        if self._hastane is None or hastane is not self._hastane:
+            raise YetkiHatasi("Sadece sorumlu olduğunuz kliniğin hastanesinde işlem yapabilirsiniz.")
+
+    def _klinik_kontrol(self, klinik) -> None:
+        if self._klinik is None or klinik is not self._klinik:
+            raise YetkiHatasi("Sadece sorumlu olduğunuz kliniği yönetebilirsiniz.")
+
+    def _asistan_baglanti_kontrol(self, asistan, doktor=None) -> None:
+        if self._klinik is None or asistan not in self._klinik.personeller:
+            raise YetkiHatasi("Sadece sorumlu olduğunuz klinikteki asistanları yönetebilirsiniz.")
+        if doktor is not None and doktor not in self._klinik.doktorlar:
+            raise YetkiHatasi("Sadece sorumlu olduğunuz klinikteki doktorları yönetebilirsiniz.")
+
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["hastane"] = self._hastane.ad if self._hastane else None
+        veri["klinik"] = self._klinik.ad if self._klinik else None
+        return veri

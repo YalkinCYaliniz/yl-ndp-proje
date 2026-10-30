@@ -57,6 +57,7 @@ GRUPLAR = {
     "kullanici": ("Kullanıcılar", Hasta),
 }
 ROL_SIRASI = ["Doktor", "Asistan", "Hemşire", "Teknisyen"]
+YONETICI_SIRASI = ["Admin", "Hastane Yöneticisi", "Klinik Yöneticisi"]
 
 
 @app.route("/")
@@ -75,11 +76,11 @@ def giris():
                  if isinstance(k, sinif) and k.kayitli_mi]
     kategoriler = []
     secili_rol = request.args.get("rol", "")
-    if secili == "personel":
-        # Kategori seçici: Doktor / Asistan / Hemşire / Teknisyen
-        kategoriler = [(rol, len([k for _, k in liste if k.rol() == rol])) for rol in ROL_SIRASI]
-        liste.sort(key=lambda cift: ROL_SIRASI.index(cift[1].rol()))
-        if secili_rol in ROL_SIRASI:
+    if secili in ("personel", "admin"):
+        siralamalar = ROL_SIRASI if secili == "personel" else YONETICI_SIRASI
+        kategoriler = [(rol, len([k for _, k in liste if k.rol() == rol])) for rol in siralamalar]
+        liste.sort(key=lambda cift: siralamalar.index(cift[1].rol()))
+        if secili_rol in siralamalar:
             liste = [(sira, k) for sira, k in liste if k.rol() == secili_rol]
     isim = request.args.get("q", "").strip()
     if isim and secili:
@@ -347,14 +348,18 @@ def doktor_asistan_ekle():
     return redirect(url_for("panel"))
 
 
-# ---------------- ADMIN ----------------
+# ---------------- ADMIN / HASTANE YÖNETİCİSİ / KLİNİK YÖNETİCİSİ ----------------
 def admin_sayfasi(admin: Yonetici):
     tum_kl = tum_klinikler()
+    yonetilen_kl = admin.yonetilen_klinikler(uyg.kurum)
+    yonetilen_kume = {k for _, k in yonetilen_kl}
     ara = request.args
-    secili_kl_sira = int(ara["ak"]) if ara.get("ak", "").isdigit() and int(ara["ak"]) < len(tum_kl) else 0
-    secili_hastane, secili_klinik = tum_kl[secili_kl_sira] if tum_kl else (None, None)
+    secili_kl_sira = (int(ara["ak"]) if ara.get("ak", "").isdigit() and int(ara["ak"]) < len(yonetilen_kl)
+                      else 0)
+    secili_hastane, secili_klinik = yonetilen_kl[secili_kl_sira] if yonetilen_kl else (None, None)
     klinik_doktorlari = list(secili_klinik.doktorlar) if secili_klinik else []
-    secili_dr_sira = int(ara["ad"]) if ara.get("ad", "").isdigit() and int(ara["ad"]) < len(klinik_doktorlari) else 0
+    secili_dr_sira = (int(ara["ad"]) if ara.get("ad", "").isdigit() and int(ara["ad"]) < len(klinik_doktorlari)
+                      else 0)
     secili_doktor = klinik_doktorlari[secili_dr_sira] if klinik_doktorlari else None
     tum_asistanlar = [p for p in personeller() if isinstance(p, Asistan)]
     uygun_asistanlar = []
@@ -363,25 +368,32 @@ def admin_sayfasi(admin: Yonetici):
             (tum_asistanlar.index(p), p) for p in secili_klinik.personeller
             if isinstance(p, Asistan) and p.doktor is not secili_doktor
         ]
-    asistan_klinikleri = {}
-    for a in tum_asistanlar:
-        etk = []
-        for h in uyg.kurum.hastaneler:
-            for k in h.klinikler:
-                if a in k.personeller:
-                    etk.append(f"{h.ad} / {k.ad}")
-        asistan_klinikleri[id(a)] = ", ".join(etk) if etk else "Klinik atanmadı"
-    return render_template("admin.html", kullanici=admin, hastaneler=uyg.kurum.hastaneler,
-                           klinikler=tum_kl, doktorlar=uyg.doktorlar(),
-                           personeller=personeller(),
-                           asistanlar=tum_asistanlar,
-                           asistan_klinikleri=asistan_klinikleri,
+    hastane_secenekleri = [(uyg.kurum.hastaneler.index(h), h)
+                           for h in admin.yonetilen_hastaneler(uyg.kurum)]
+    klinik_secenekleri = [(tum_kl.index((h, k)), h, k) for h, k in yonetilen_kl]
+    asistan_secenekleri = [(tum_asistanlar.index(a), a) for a in tum_asistanlar
+                           if any(k in yonetilen_kume for k in a.klinikler)]
+    doktor_secenekleri = [(uyg.doktorlar().index(d), d) for d in uyg.doktorlar()
+                          if any(k in yonetilen_kume for k in d.klinikler)]
+    yapi = [(h, [k for h2, k in yonetilen_kl if h2 is h])
+            for h in admin.yonetilen_hastaneler(uyg.kurum)]
+    randevular = [(uyg.sistem.randevular.index(r), r)
+                  for r in admin.yonetilen_randevular(uyg.sistem)]
+    return render_template("admin.html", kullanici=admin,
+                           hastane_secenekleri=hastane_secenekleri,
+                           klinik_secenekleri=klinik_secenekleri,
+                           yonetilen_kl=yonetilen_kl,
+                           yonetilebilir_kullanicilar=admin.yonetilebilir_kullanicilar(uyg),
+                           doktorlar=doktor_secenekleri,
+                           personeller=list(enumerate(personeller())),
+                           asistanlar=asistan_secenekleri,
                            secili_kl_sira=secili_kl_sira,
                            klinik_doktorlari=[(uyg.doktorlar().index(d), d) for d in klinik_doktorlari],
                            secili_dr_sira=secili_dr_sira,
                            secili_doktor=secili_doktor,
                            uygun_asistanlar=uygun_asistanlar,
-                           randevular=uyg.sistem.randevular)
+                           yapi=yapi,
+                           randevular=randevular)
 
 
 @app.post("/admin/hastane")
@@ -475,6 +487,44 @@ def admin_asistan_ayir():
         asistanlar = [p for p in personeller() if isinstance(p, Asistan)]
         simdiki_kullanici().asistan_ayir(asistanlar[int(f["asistan"])])
     calistir(islem, "Asistan doktordan ayrıldı.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/randevu-onayla/<int:sira>")
+def admin_randevu_onayla(sira):
+    calistir(lambda: simdiki_kullanici().randevu_onayla(uyg.sistem.randevular[sira]),
+             "Randevu onaylandı.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/randevu-reddet/<int:sira>")
+def admin_randevu_reddet(sira):
+    calistir(lambda: simdiki_kullanici().randevu_reddet(uyg.sistem.randevular[sira]),
+             "Randevu reddedildi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/randevu-iptal/<int:sira>")
+def admin_randevu_iptal(sira):
+    calistir(lambda: simdiki_kullanici().randevu_iptal(uyg.sistem.randevular[sira]),
+             "Randevu iptal edildi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/rol-degistir")
+def admin_rol_degistir():
+    f = request.form
+
+    def islem():
+        kisi = uyg.kullanicilar[int(f["kullanici"])]
+        yeni_rol = f["yeni_rol"]
+        hastane = klinik = None
+        if yeni_rol == "hastane_yoneticisi":
+            hastane = uyg.kurum.hastaneler[int(f["hastane"])]
+        elif yeni_rol == "klinik_yoneticisi":
+            hastane, klinik = tum_klinikler()[int(f["klinik"])]
+        simdiki_kullanici().rol_degistir(uyg, kisi, yeni_rol, hastane, klinik)
+    calistir(islem, "Kullanıcı rolü güncellendi.")
     return redirect(url_for("panel"))
 
 

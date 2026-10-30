@@ -8,8 +8,9 @@ import app as uygulama_modulu
 from randevu.arama import Arama, sadelestir
 from randevu.depo import Depo
 from randevu.hatalar import RandevuHatasi, SistemHatasi, YetkiHatasi
-from randevu.kullanici import Doktor, Asistan, Hemsire
-from randevu.kurum import Klinik, Muayene
+from randevu.kullanici import (Doktor, Asistan, Hemsire, Teknisyen,
+                               HastaneYoneticisi, KlinikYoneticisi)
+from randevu.kurum import Hastane, Klinik, Muayene
 from randevu.ornek_veri import ornek_veri
 from randevu.recete import Recete
 from randevu.uygulama import VARSAYILAN_SIFRE
@@ -379,6 +380,110 @@ class YeniArayuzTest(unittest.TestCase):
         self.istemci.get("/cikis")
         self.giris(3)
         self.assertIsNone(emoji.search(self.istemci.get("/panel").get_data(as_text=True)))
+
+    def test_hastane_ve_klinik_yoneticisi_panelleri(self):
+        uyg = uygulama_modulu.uyg
+        h_yon = next(k for k in uyg.kullanicilar if isinstance(k, HastaneYoneticisi))
+        k_yon = next(k for k in uyg.kullanicilar if isinstance(k, KlinikYoneticisi))
+        self.giris(uyg.kullanicilar.index(h_yon))
+        sayfa = self.istemci.get("/panel").get_data(as_text=True)
+        self.assertIn("Hastane Yöneticisi", sayfa)
+        self.assertNotIn("Hastane ekle", sayfa)
+        self.assertIn("Klinik ekle", sayfa)
+        self.istemci.get("/cikis")
+        self.giris(uyg.kullanicilar.index(k_yon))
+        sayfa2 = self.istemci.get("/panel").get_data(as_text=True)
+        self.assertIn("Klinik Yöneticisi", sayfa2)
+        self.assertNotIn("Hastane ekle", sayfa2)
+        self.assertNotIn("Klinik ekle", sayfa2)
+        self.assertNotIn("Klinik yöneticisi ata", sayfa2)
+
+    def test_admin_ve_hastane_yoneticisi_rol_degistirir(self):
+        uyg = uygulama_modulu.uyg
+        # 1. Admin normal kullanıcı Ali'yi (sira=1) Merkez Hastane Yöneticisi yapar
+        self.giris(0)
+        self.istemci.post("/admin/rol-degistir", data={
+            "kullanici": 1, "yeni_rol": "hastane_yoneticisi", "hastane": 0})
+        self.assertIsInstance(uyg.kullanicilar[1], HastaneYoneticisi)
+        self.assertIs(uyg.kullanicilar[1].hastane, uyg.kurum.hastaneler[0])
+        self.assertTrue(uyg.kullanicilar[1].sifre_dogru_mu(VARSAYILAN_SIFRE))
+        # 2. Şimdi Ali (Merkez Hastane Yöneticisi) giriş yapar; Veli'yi (sira=2) kendi kliniğine Klinik Yöneticisi yapar
+        self.istemci.get("/cikis")
+        self.giris(1)
+        self.istemci.post("/admin/rol-degistir", data={
+            "kullanici": 2, "yeni_rol": "klinik_yoneticisi", "klinik": 0})
+        self.assertIsInstance(uyg.kullanicilar[2], KlinikYoneticisi)
+        self.assertIs(uyg.kullanicilar[2].klinik, uyg.kurum.hastaneler[0].klinikler[0])
+        # 3. Hastane yöneticisi Veli'yi başka bir hastanenin kliniğine (ör. klinik=10) atayamaz
+        self.istemci.post("/admin/rol-degistir", data={
+            "kullanici": 2, "yeni_rol": "klinik_yoneticisi", "klinik": 10})
+        self.assertIs(uyg.kullanicilar[2].hastane, uyg.kurum.hastaneler[0])
+        # 4. Hastane yöneticisi kimseyi Hastane Yöneticisi yapamaz
+        self.istemci.post("/admin/rol-degistir", data={
+            "kullanici": 2, "yeni_rol": "hastane_yoneticisi", "hastane": 0})
+        self.assertIsInstance(uyg.kullanicilar[2], KlinikYoneticisi)
+        # 5. Admin Ali'yi ve Veli'yi tekrar normal kullanıcı (Hasta) yapabilir
+        self.istemci.get("/cikis")
+        self.giris(0)
+        self.istemci.post("/admin/rol-degistir", data={"kullanici": 1, "yeni_rol": "hasta"})
+        self.istemci.post("/admin/rol-degistir", data={"kullanici": 2, "yeni_rol": "hasta"})
+        self.assertEqual(uyg.kullanicilar[1].rol(), "Hasta")
+        self.assertEqual(uyg.kullanicilar[2].rol(), "Hasta")
+
+
+class YoneticiKapsamTest(TemelTest):
+    def setUp(self):
+        super().setUp()
+        self.hastane_yon = HastaneYoneticisi("Hakan", "Yurt", "81111111111", self.merkez)
+        self.klinik_yon = KlinikYoneticisi("Kemal", "Ak", "82222222222", self.merkez, self.dahiliye)
+
+    def test_hastane_yoneticisi_sadece_kendi_hastanesini_yonetir(self):
+        from datetime import time
+        with self.assertRaises(YetkiHatasi):
+            self.hastane_yon.hastane_ekle(self.kurum, Hastane("Yeni", time(8, 0), time(17, 0)))
+        # Kendi hastanesine klinik ekleyebilir, başka hastaneye ekleyemez
+        yeni_kl = Klinik("Nöroloji")
+        self.hastane_yon.klinik_ekle(self.merkez, yeni_kl)
+        self.assertIn(yeni_kl, self.merkez.klinikler)
+        with self.assertRaises(YetkiHatasi):
+            self.hastane_yon.klinik_ekle(self.kadikoy, Klinik("Göz"))
+        # Başka hastanenin kliniğine hizmet/personel ekleyemez
+        with self.assertRaises(YetkiHatasi):
+            self.hastane_yon.hizmet_ekle(self.dahiliye2, Muayene("Ek", 15, 200))
+
+    def test_klinik_yoneticisi_sadece_kendi_klinigini_yonetir(self):
+        with self.assertRaises(YetkiHatasi):
+            self.klinik_yon.klinik_ekle(self.merkez, Klinik("Nöroloji"))
+        # Kendi kliniğine hizmet ve personel (doktor, asistan, hemşire, teknisyen) atayabilir
+        kontrol = Muayene("Kontrol", 15, 250.0)
+        self.klinik_yon.hizmet_ekle(self.dahiliye, kontrol)
+        self.assertIn(kontrol, self.dahiliye.hizmetler)
+        asistan = Asistan("Elif", "Aydın", "66666666666")
+        hemsire = Hemsire("Zeynep", "Acar", "33333333333", "Hemşirelik")
+        teknisyen = Teknisyen("Can", "Er", "44444444444", "Dahiliye", "Tansiyon Cihazı")
+        for p in (asistan, hemsire, teknisyen):
+            self.klinik_yon.personel_ata(self.dahiliye, p)
+        self.klinik_yon.asistan_bagla(asistan, self.doktor)
+        self.assertIs(asistan.doktor, self.doktor)
+        # Aynı hastanedeki başka bir kliniğe (Kardiyoloji) karışamaz
+        with self.assertRaises(YetkiHatasi):
+            self.klinik_yon.personel_ata(self.kardiyoloji, hemsire)
+        with self.assertRaises(YetkiHatasi):
+            self.klinik_yon.hizmet_ekle(self.kardiyoloji, Muayene("Yasak", 15, 100))
+
+    def test_klinik_yoneticisi_sadece_kendi_kliniginin_randevusuna_karisabilir(self):
+        r_dahiliye = self.randevu_al()
+        diger_dr = Doktor("Can", "Öztürk", "55555555555", "Kardiyoloji")
+        self.admin.doktor_ekle(self.kardiyoloji, diger_dr)
+        diger_dr.musaitlik_ekle(datetime(2026, 10, 14, 15, 0), datetime(2026, 10, 14, 16, 0))
+        r_kardiyo = self.hasta2.randevu_al(self.sistem, self.merkez, self.kardiyoloji,
+                                           diger_dr, self.ekg, datetime(2026, 10, 14, 15, 0))
+        self.assertEqual(self.klinik_yon.yonetilen_randevular(self.sistem), [r_dahiliye])
+        self.klinik_yon.randevu_onayla(r_dahiliye)
+        with self.assertRaises(YetkiHatasi):
+            self.klinik_yon.randevu_onayla(r_kardiyo)
+        with self.assertRaises(YetkiHatasi):
+            self.klinik_yon.randevu_iptal(r_kardiyo)
 
 
 if __name__ == "__main__":

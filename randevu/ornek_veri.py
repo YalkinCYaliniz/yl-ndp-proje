@@ -2,7 +2,8 @@
 from datetime import date, datetime, time, timedelta
 
 from randevu.guvenlik import Sifre
-from randevu.kullanici import Hasta, Doktor, Yonetici, Asistan, Hemsire, Teknisyen
+from randevu.kullanici import (Hasta, Doktor, Yonetici, HastaneYoneticisi, KlinikYoneticisi,
+                               Asistan, Hemsire, Teknisyen)
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.uygulama import Uygulama, VARSAYILAN_SIFRE
 
@@ -248,4 +249,13 @@ def ornek_veri(baslangic_gunu: date = date(2026, 10, 28)) -> Uygulama:
     for _ in range(10):
         ad, soyad, tc = uretici.sonraki()
         kullanici_ekle(Hasta(ad, soyad, tc))
+
+    # ---------------- Hastane ve Klinik Yöneticileri ----------------
+    for hastane in uyg.kurum.hastaneler:
+        ad, soyad, tc = uretici.sonraki()
+        kullanici_ekle(HastaneYoneticisi(ad, soyad, tc, hastane))
+        # Her hastanenin ilk iki kliniği için klinik yöneticisi
+        for klinik in hastane.klinikler[:2]:
+            ad, soyad, tc = uretici.sonraki()
+            kullanici_ekle(KlinikYoneticisi(ad, soyad, tc, hastane, klinik))
     return uyg

@@ -4,8 +4,8 @@ import os
 from datetime import datetime, time
 
 from randevu.guvenlik import Sifre
-from randevu.kullanici import (Hasta, Misafir, Doktor, Yonetici, Asistan, Hemsire,
-                               Teknisyen)
+from randevu.kullanici import (Hasta, Misafir, Doktor, Yonetici, HastaneYoneticisi,
+                               KlinikYoneticisi, Asistan, Hemsire, Teknisyen)
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.randevu import Randevu, RandevuDurumu
 from randevu.recete import Recete
@@ -86,10 +86,15 @@ class Depo:
                     kisiler[tc].hizmet_tanimla(
                         klinik, [s for s in klinik.hizmetler if s.ad in adlar])
 
-        # Asistan-doktor bağlantıları klinik atamalarından sonra kurulur
+        # Asistan-doktor ve hastane/klinik yöneticisi bağlantıları kurulduktan sonra atanır
         for k in veri["kullanicilar"]:
             if k["tur"] == "Asistan" and k.get("doktor"):
                 kisiler[k["tc_no"]].doktora_bagla(kisiler[k["doktor"]])
+            elif k["tur"] == "HastaneYoneticisi" and k.get("hastane"):
+                kisiler[k["tc_no"]].hastane_ata(uyg.kurum.hastane_bul(k["hastane"]))
+            elif k["tur"] == "KlinikYoneticisi" and k.get("hastane") and k.get("klinik"):
+                hastane = uyg.kurum.hastane_bul(k["hastane"])
+                kisiler[k["tc_no"]].klinik_ata(hastane, hastane.klinik_bul(k["klinik"]))
 
         for r in veri["randevular"]:
             hastane = uyg.kurum.hastane_bul(r["hastane"])
@@ -121,17 +126,20 @@ class Depo:
             return Hasta(k["ad"], k["soyad"], k["tc_no"])
         if tur == "Yonetici":
             return Yonetici(k["ad"], k["soyad"], k["tc_no"])
+        if tur == "HastaneYoneticisi":
+            return HastaneYoneticisi(k["ad"], k["soyad"], k["tc_no"])
+        if tur == "KlinikYoneticisi":
+            return KlinikYoneticisi(k["ad"], k["soyad"], k["tc_no"])
         if tur == "Asistan":
-            kisi = Asistan(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
-        elif tur == "Teknisyen":
-            kisi = Teknisyen(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"], k["cihaz"])
-        elif tur == "Hemsire":
-            kisi = Hemsire(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
-        else:
-            kisi = Doktor(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
-        for baslangic, bitis in k["musaitlik"]:
-            kisi.musaitlik_yukle(datetime.fromisoformat(baslangic), datetime.fromisoformat(bitis))
-        return kisi
+            return Asistan(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
+        if tur == "Teknisyen":
+            return Teknisyen(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"], k["cihaz"])
+        if tur == "Hemsire":
+            return Hemsire(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
+        doktor = Doktor(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
+        for baslangic, bitis in k.get("musaitlik", []):
+            doktor.musaitlik_yukle(datetime.fromisoformat(baslangic), datetime.fromisoformat(bitis))
+        return doktor
 
     def _hizmet_olustur(self, s: dict):
         if s["tur"] == "Radyoloji":

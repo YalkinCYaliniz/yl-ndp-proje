@@ -31,7 +31,7 @@
 <h2>{{ baslik }}</h2>
 {% if kategoriler %}
 <form method="get" class="kart">
-  <input type="hidden" name="grup" value="personel">
+  <input type="hidden" name="grup" value="{{ secili }}">
   <label>Kategori:
     <select name="rol" onchange="this.form.submit()">
       <option value="">Tümü</option>
@@ -50,6 +50,9 @@
     <span class="rol">{{ k.rol() }}</span>
     <div class="ad">{{ k.tam_ad }}</div>
     {% if k.uzmanlik is defined %}<small>{{ k.uzmanlik }}</small>{% endif %}
+    {% if k.kapsam_etiketi is defined %}
+    <div style="margin-top:8px"><span class="etiket">{{ k.kapsam_etiketi }}</span></div>
+    {% endif %}
     {% if k.klinikler is defined %}
     <div style="margin-top:8px">
       {% for kl in k.klinikler %}<span class="etiket">{{ kl.ad }}</span>{% endfor %}

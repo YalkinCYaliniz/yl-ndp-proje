@@ -25,18 +25,20 @@ def main():
 
     # Admin yapıyı kurar: Kurum -> Hastane -> Klinik -> Doktor
     merkez = Hastane("Merkez Hastane", time(8, 0), time(17, 0))
+    kadikoy = Hastane("Kadıköy Şubesi", time(8, 0), time(17, 0))
     dahiliye = Klinik("Dahiliye")
-    kardiyoloji = Klinik("Kardiyoloji")
+    dahiliye2 = Klinik("Dahiliye")
     muayene = Muayene("Genel Muayene", 30, 500.0)
     ekg = Radyoloji("EKG", 30, 400.0, cihaz_ucreti=300.0)
 
     admin.hastane_ekle(kurum, merkez)
+    admin.hastane_ekle(kurum, kadikoy)
     admin.klinik_ekle(merkez, dahiliye)
-    admin.klinik_ekle(merkez, kardiyoloji)
+    admin.klinik_ekle(kadikoy, dahiliye2)
     admin.hizmet_ekle(dahiliye, muayene)
-    admin.hizmet_ekle(kardiyoloji, ekg)
+    admin.hizmet_ekle(dahiliye2, ekg)
     admin.doktor_ekle(dahiliye, doktor)
-    admin.doktor_ekle(kardiyoloji, doktor)   # bir doktor iki klinikte
+    admin.doktor_ekle(dahiliye2, doktor)   # bir doktor iki hastanede kendi uzmanlık kliniğinde
     doktor.musaitlik_ekle(datetime(2026, 10, 14, 13, 0), datetime(2026, 10, 14, 15, 0))
 
     # Normal kullanıcı randevu alır

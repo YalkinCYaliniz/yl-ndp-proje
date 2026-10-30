@@ -70,6 +70,18 @@ class KullaniciTest(TemelTest):
         with self.assertRaises(YetkiHatasi):
             hemsire.randevu_onayla(r)
 
+    def test_musaitlik_tanimlama_sadece_doktora_ozeldir(self):
+        asistan = Asistan("A", "B", "66666666666")
+        hemsire = Hemsire("H", "S", "33333333333", "Hemşirelik")
+        teknisyen = Teknisyen("T", "K", "44444444444", "Radyoloji", "EKG")
+        self.assertTrue(self.doktor.yetki_var_mi("musaitlik_tanimla"))
+        for personel, beklenen_yetki in ((asistan, ["hasta_hazirla"]),
+                                         (hemsire, ["hasta_kabul"]),
+                                         (teknisyen, ["tetkik_yap"])):
+            self.assertEqual(personel.yetkiler(), beklenen_yetki)
+            self.assertFalse(personel.yetki_var_mi("musaitlik_tanimla"))
+            self.assertFalse(hasattr(personel, "musaitlik"))
+
     def test_doktor_birden_fazla_klinik_ve_hizmet(self):
         self.assertEqual(len(self.doktor.klinikler), 2)
         self.assertEqual(len(self.doktor.hizmetler), 2)

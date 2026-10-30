@@ -55,3 +55,13 @@ class Uygulama:
 
     def doktorlar(self) -> list:
         return [k for k in self.kullanicilar if isinstance(k, Doktor)]
+
+    def kullanici_degistir(self, eski, yeni) -> None:
+        """Kullanıcının rol nesnesini listedeki sırasını ve kimlik bilgilerini koruyarak günceller."""
+        if eski not in self.kullanicilar:
+            raise SistemHatasi("Kullanıcı sistemde kayıtlı değil.")
+        eski.kimlik_aktar(yeni)
+        self.kullanicilar[self.kullanicilar.index(eski)] = yeni
+        for r in self.sistem.randevular:
+            if r.hasta is eski:
+                r.hasta = yeni

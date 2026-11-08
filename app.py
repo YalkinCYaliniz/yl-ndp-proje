@@ -193,7 +193,7 @@ def hasta_sayfasi(hasta: Hasta):
         if ara.get("tarih") and secim["doktor"] and secim["hizmet"]:
             gun = datetime.strptime(ara["tarih"], "%Y-%m-%d").date()
             secim["slotlar"] = uyg.sistem.saat_tablosu(
-                secim["hastane"], secim["doktor"], secim["hizmet"], gun)
+                secim["hastane"], secim["doktor"], secim["hizmet"], gun, gecmisi_gizle=True)
     except (ValueError, IndexError):
         flash("Geçersiz seçim.", "hata")
     aranan = ara.get("q", "").strip()
@@ -231,8 +231,15 @@ def hasta_iptal(sira):
 
 @app.post("/hasta/odeme/<int:sira>")
 def hasta_odeme(sira):
+    kullanici = simdiki_kullanici()
+    if kullanici is None:
+        flash("Ödeme için giriş yapmalısınız.", "hata")
+        return redirect(url_for("giris"))
     odeme = ODEMELER.get(request.form.get("yontem"))
-    calistir(lambda: uyg.sistem.randevular[sira].odeme_yap(odeme), "Ödeme alındı.")
+    if odeme is None:
+        flash("Geçersiz ödeme yöntemi.", "hata")
+        return redirect(url_for("panel"))
+    calistir(lambda: kullanici.odeme_yap(uyg.sistem.randevular[sira], odeme), "Ödeme alındı.")
     return redirect(url_for("panel"))
 
 

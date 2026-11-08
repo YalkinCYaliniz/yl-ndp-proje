@@ -22,6 +22,9 @@ class Uygulama:
                 raise SistemHatasi("Bu kullanıcı adı zaten alınmış.")
             if k.eposta == kullanici.eposta:
                 raise SistemHatasi("Bu e-posta ile kayıtlı bir kullanıcı var.")
+        if kullanici.kayitli_mi and not kullanici.sifre_var_mi:
+            # Yönetici panelinden eklenen personel hemen giriş yapabilsin: ilk şifre atanır
+            kullanici.sifre_belirle(Sifre.olustur(VARSAYILAN_SIFRE))
         self.kullanicilar.append(kullanici)
 
     def kimlik_dogrula(self, kullanici_adi: str, sifre: str):

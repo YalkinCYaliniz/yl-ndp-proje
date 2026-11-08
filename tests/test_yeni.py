@@ -10,7 +10,7 @@ from randevu.depo import Depo
 from randevu.hatalar import RandevuHatasi, SistemHatasi, YetkiHatasi
 from randevu.kullanici import (Doktor, Asistan, Hemsire, Teknisyen,
                                HastaneYoneticisi, KlinikYoneticisi)
-from randevu.kurum import Hastane, Klinik, Muayene
+from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.ornek_veri import ornek_veri
 from randevu.recete import Recete
 from randevu.uygulama import VARSAYILAN_SIFRE
@@ -267,6 +267,127 @@ class YeniDepoTest(unittest.TestCase):
         self.assertEqual(yr.recete.ilaclar, ("Parol", "C Vitamini"))
         self.assertEqual(yr.recete.doktor_notu, "Dinlenin")
         self.assertEqual(len(yeni.kullanicilar), len(uyg.kullanicilar))
+
+
+class TeslimDuzeltmeleriTest(TemelTest):
+    """Teslim öncesi bulunan hataların düzeltmelerini doğrular."""
+
+    def test_gecersiz_hizmet_kaydedilemez(self):
+        with self.assertRaises(ValueError):
+            Muayene("Sıfır süre", 0, 100.0)
+        with self.assertRaises(ValueError):
+            Muayene("Negatif ücret", 30, -500.0)
+        with self.assertRaises(ValueError):
+            Radyoloji("R", 30, 100.0, cihaz_ucreti=-1)
+        with self.assertRaises(ValueError):
+            Laboratuvar("L", 15, 100.0, tahlil_sayisi=0)
+
+    def test_acilis_kapanistan_once_olmali(self):
+        from datetime import time
+        with self.assertRaises(ValueError):
+            Hastane("Ters", time(17, 0), time(8, 0))
+
+    def test_ayni_adli_hastane_ve_klinik_olmaz(self):
+        from datetime import time
+        with self.assertRaises(SistemHatasi):
+            self.admin.hastane_ekle(self.kurum, Hastane("merkez", time(8, 0), time(17, 0)))
+        with self.assertRaises(SistemHatasi):
+            self.admin.klinik_ekle(self.merkez, Klinik("Dahiliye"))
+
+    def test_ayni_adli_klinik_farkli_hastanede_olabilir(self):
+        self.assertIsNot(self.dahiliye, self.dahiliye2)      # TemelTest'te iki hastanede de Dahiliye var
+
+    def test_gecmis_tarihli_randevu_alinamaz(self):
+        from randevu.randevu import RandevuSistemi
+        sistem = RandevuSistemi(saat=lambda: datetime(2026, 10, 14, 14, 0))
+        with self.assertRaises(RandevuHatasi):
+            self.hasta.randevu_al(sistem, self.merkez, self.dahiliye, self.doktor,
+                                  self.muayene, datetime(2026, 10, 14, 13, 30))
+        r = self.hasta.randevu_al(sistem, self.merkez, self.dahiliye, self.doktor,
+                                  self.muayene, datetime(2026, 10, 14, 14, 30))
+        self.assertEqual(r.baslangic, datetime(2026, 10, 14, 14, 30))
+
+    def test_musait_gunler_ve_saatler_gecmisi_gostermez(self):
+        from randevu.randevu import RandevuSistemi
+        sistem = RandevuSistemi(saat=lambda: datetime(2026, 10, 14, 14, 10))
+        gun = datetime(2026, 10, 14).date()
+        self.assertEqual(sistem.musait_gunler(self.merkez, self.doktor, self.muayene), [(gun, 1)])
+        slotlar = sistem.saat_tablosu(self.merkez, self.doktor, self.muayene, gun, gecmisi_gizle=True)
+        self.assertEqual([s.baslangic for s in slotlar], [datetime(2026, 10, 14, 14, 30)])
+        sistem_sonra = RandevuSistemi(saat=lambda: datetime(2026, 10, 15, 8, 0))
+        self.assertEqual(sistem_sonra.musait_gunler(self.merkez, self.doktor, self.muayene), [])
+
+    def test_yeni_personel_hemen_giris_yapar(self):
+        from randevu.uygulama import Uygulama
+        uyg = Uygulama()
+        yeni = Doktor("Yeni", "Doktor", "98765432101", "Dahiliye")
+        self.admin.personel_kaydet(uyg, yeni)
+        self.assertTrue(yeni.sifre_dogru_mu(VARSAYILAN_SIFRE))
+        self.assertIs(uyg.kimlik_dogrula(yeni.kullanici_adi, VARSAYILAN_SIFRE), yeni)
+
+    def test_odeme_sadece_randevu_sahibi_yapar(self):
+        from randevu.odeme import NakitOdeme
+        r = self.randevu_al()
+        self.doktor.randevu_onayla(r)
+        with self.assertRaises(YetkiHatasi):
+            self.hasta2.odeme_yap(r, NakitOdeme())
+        self.assertFalse(r.odendi_mi)
+        self.assertEqual(self.hasta.odeme_yap(r, NakitOdeme()), 500.0)
+
+
+class OdemeArayuzTest(unittest.TestCase):
+    def setUp(self):
+        uygulama_modulu.uyg = ornek_veri()
+        uygulama_modulu.depo = None
+        self.istemci = uygulama_modulu.app.test_client()
+
+    def onayli_randevu(self):
+        uyg = uygulama_modulu.uyg
+        ali, ayse = uyg.kullanicilar[1], uyg.kullanicilar[3]
+        merkez = uyg.kurum.hastaneler[0]
+        dahiliye = merkez.klinikler[0]
+        r = ali.randevu_al(uyg.sistem, merkez, dahiliye, ayse, dahiliye.hizmetler[0],
+                           datetime(2026, 10, 28, 9, 0))
+        ayse.randevu_onayla(r)
+        return r
+
+    def test_oturumsuz_odeme_yapilamaz(self):
+        r = self.onayli_randevu()
+        self.istemci.post("/hasta/odeme/0", data={"yontem": "kart"})
+        self.assertFalse(r.odendi_mi)
+
+    def test_baskasinin_randevusuna_odeme_yapilamaz(self):
+        r = self.onayli_randevu()
+        self.istemci.post("/giris/2", data={"sifre": VARSAYILAN_SIFRE})      # Veli
+        self.istemci.post("/hasta/odeme/0", data={"yontem": "kart"})
+        self.assertFalse(r.odendi_mi)
+        self.istemci.get("/cikis")
+        self.istemci.post("/giris/1", data={"sifre": VARSAYILAN_SIFRE})      # Ali (sahibi)
+        self.istemci.post("/hasta/odeme/0", data={"yontem": "kart"})
+        self.assertTrue(r.odendi_mi)
+
+    def test_admin_panelinden_eklenen_doktor_ilk_sifreyle_girer(self):
+        self.istemci.post("/giris/0", data={"sifre": VARSAYILAN_SIFRE})
+        self.istemci.post("/admin/personel", data={
+            "tur": "doktor", "ad": "Taze", "soyad": "Doktor", "tc": "98765432109",
+            "uzmanlik": "Dahiliye"})
+        self.istemci.get("/cikis")
+        cevap = self.istemci.post("/giris-kullanici", data={
+            "kullanici_adi": "taze.doktor", "sifre": VARSAYILAN_SIFRE})
+        self.assertEqual(cevap.status_code, 302)
+        self.assertTrue(cevap.headers["Location"].endswith("/panel"))
+
+    def test_gecersiz_hizmet_ve_saat_arayuzden_kaydedilmez(self):
+        self.istemci.post("/giris/0", data={"sifre": VARSAYILAN_SIFRE})
+        uyg = uygulama_modulu.uyg
+        klinik = uyg.kurum.hastaneler[0].klinikler[0]
+        onceki = len(klinik.hizmetler)
+        self.istemci.post("/admin/hizmet", data={
+            "klinik": 0, "tur": "muayene", "ad": "Hatalı", "sure": 0, "ucret": -500})
+        self.assertEqual(len(klinik.hizmetler), onceki)
+        onceki_hastane = len(uyg.kurum.hastaneler)
+        self.istemci.post("/admin/hastane", data={"ad": "Ters", "acilis": "17:00", "kapanis": "08:00"})
+        self.assertEqual(len(uyg.kurum.hastaneler), onceki_hastane)
 
 
 class YeniArayuzTest(unittest.TestCase):

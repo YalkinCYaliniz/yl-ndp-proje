@@ -57,7 +57,7 @@ class KullaniciKimlikTest(unittest.TestCase):
         self.assertFalse(m.kayitli_mi)
         self.assertTrue(Hasta("A", "B", "12345678901").kayitli_mi)
         self.assertIsInstance(m, Hasta)
-        self.assertEqual(m.yetkiler(), ["randevu_al", "randevu_iptal"])
+        self.assertEqual(m.yetkiler(), ["randevu_al", "randevu_iptal", "odeme_yap"])
 
 
 class UygulamaKimlikTest(unittest.TestCase):

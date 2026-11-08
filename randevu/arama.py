@@ -31,7 +31,7 @@ class Arama:
         aranan = sadelestir(sorgu)
         if not aranan:
             return []
-        sonra = sonra or datetime.now()
+        sonra = sonra or self._sistem.simdi()
         sonuclar = []
         for hi, hastane in enumerate(self._kurum.hastaneler):
             for ki, klinik in enumerate(hastane.klinikler):

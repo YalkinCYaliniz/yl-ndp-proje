@@ -53,6 +53,10 @@ class Kullanici(ABC):
     def sifre_belirle(self, sifre: Sifre) -> None:
         self.__sifre = sifre
 
+    @property
+    def sifre_var_mi(self) -> bool:
+        return self.__sifre is not None
+
     def sifre_dogru_mu(self, duz_sifre: str) -> bool:
         return self.__sifre is not None and self.__sifre.dogru_mu(duz_sifre)
 
@@ -112,11 +116,18 @@ class Hasta(Kullanici):
         return "Hasta"
 
     def yetkiler(self) -> list[str]:
-        return ["randevu_al", "randevu_iptal"]
+        return ["randevu_al", "randevu_iptal", "odeme_yap"]
 
     def randevu_al(self, sistem, hastane, klinik, doktor, hizmet, baslangic):
         self._yetki_kontrol("randevu_al")
         return sistem.randevu_olustur(self, hastane, klinik, doktor, hizmet, baslangic)
+
+    def odeme_yap(self, randevu, odeme) -> float:
+        """Sadece kendi randevusunun ödemesini yapabilir."""
+        self._yetki_kontrol("odeme_yap")
+        if randevu.hasta is not self:
+            raise YetkiHatasi("Başkasının randevusu için ödeme yapamazsınız.")
+        return randevu.odeme_yap(odeme)
 
     def randevularim(self, sistem) -> list:
         """Hastanın kendi randevu geçmişi."""

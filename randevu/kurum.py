@@ -9,7 +9,13 @@ class Hizmet(ABC):
     """Soyut hizmet: ad, süre ve taban ücret. Türler bu sınıftan türer."""
 
     def __init__(self, ad: str, sure_dk: int, taban_ucret: float):
-        self.ad = ad
+        if not ad or not ad.strip():
+            raise ValueError("Hizmet adı boş olamaz.")
+        if sure_dk <= 0:
+            raise ValueError("Hizmet süresi 0'dan büyük olmalıdır.")
+        if taban_ucret < 0:
+            raise ValueError("Hizmet ücreti negatif olamaz.")
+        self.ad = ad.strip()
         self.sure_dk = sure_dk
         self._taban_ucret = taban_ucret      # Kapsülleme: dışarıdan değiştirilmez
 
@@ -41,6 +47,8 @@ class Radyoloji(Hizmet):
 
     def __init__(self, ad, sure_dk, taban_ucret, cihaz_ucreti: float):
         super().__init__(ad, sure_dk, taban_ucret)
+        if cihaz_ucreti < 0:
+            raise ValueError("Cihaz ücreti negatif olamaz.")
         self._cihaz_ucreti = cihaz_ucreti
 
     def tur(self) -> str:
@@ -60,6 +68,8 @@ class Laboratuvar(Hizmet):
 
     def __init__(self, ad, sure_dk, taban_ucret, tahlil_sayisi: int = 1):
         super().__init__(ad, sure_dk, taban_ucret)
+        if tahlil_sayisi < 1:
+            raise ValueError("Tahlil sayısı en az 1 olmalıdır.")
         self._tahlil_sayisi = tahlil_sayisi
 
     def tur(self) -> str:
@@ -128,12 +138,19 @@ class Hastane:
     """Kurumun bir şubesi: çalışma saatleri ve klinikleri vardır."""
 
     def __init__(self, ad: str, acilis: time = time(8, 0), kapanis: time = time(17, 0)):
-        self.ad = ad
+        if not ad or not ad.strip():
+            raise ValueError("Hastane adı boş olamaz.")
+        if acilis >= kapanis:
+            raise ValueError("Açılış saati kapanış saatinden önce olmalıdır.")
+        self.ad = ad.strip()
         self.acilis = acilis
         self.kapanis = kapanis
         self._klinikler = []
 
     def klinik_ekle(self, klinik: Klinik) -> None:
+        """Klinik adı aynı hastane içinde benzersiz olmalı (yeniden yüklemede doğru klinik bulunsun)."""
+        if any(k.ad.lower() == klinik.ad.lower() for k in self._klinikler):
+            raise SistemHatasi(f"'{klinik.ad}' kliniği bu hastanede zaten var.")
         self._klinikler.append(klinik)
 
     def klinik_bul(self, ad: str) -> Klinik:
@@ -159,6 +176,9 @@ class Kurum:
         self._hastaneler = []
 
     def hastane_ekle(self, hastane: Hastane) -> None:
+        """Hastane adı kurum içinde benzersiz olmalı."""
+        if any(h.ad.lower() == hastane.ad.lower() for h in self._hastaneler):
+            raise SistemHatasi(f"'{hastane.ad}' hastanesi kurumda zaten var.")
         self._hastaneler.append(hastane)
 
     def hastane_bul(self, ad: str) -> Hastane:

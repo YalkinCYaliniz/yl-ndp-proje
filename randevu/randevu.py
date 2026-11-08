@@ -1,8 +1,13 @@
 """Randevu sınıfları ve MHRS tarzı randevu alma akışı."""
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 
 from randevu.hatalar import RandevuHatasi
+
+
+def su_an() -> datetime:
+    """Gerçek saat (testlerde sahte saatle değiştirilebilir)."""
+    return datetime.now()
 
 
 class RandevuDurumu(Enum):
@@ -124,8 +129,12 @@ class Slot:
 class RandevuSistemi:
     """Randevuları oluşturur; müsaitlik ve çakışma kurallarını kontrol eder."""
 
-    def __init__(self):
+    def __init__(self, saat=None):
         self._randevular = []
+        self._saat = saat           # test için sahte saat verilebilir; yoksa gerçek saat
+
+    def simdi(self) -> datetime:
+        return self._saat() if self._saat else su_an()
 
     @property
     def randevular(self) -> tuple:
@@ -158,21 +167,30 @@ class RandevuSistemi:
         return self._cakisan_randevu(doktor, baslangic, bitis) is not None
 
     def musait_gunler(self, hastane, doktor, hizmet) -> list:
-        """Doktorun çalıştığı günler ve her günün boş saat sayısı: [(date, bos_sayisi)]."""
-        gunler = sorted({baslangic.date() for baslangic, _ in doktor.musaitlik})
+        """Bugünden itibaren doktorun çalıştığı günler ve boş saat sayısı: [(date, bos_sayisi)]."""
+        gunler = sorted({b.date() for b, _ in doktor.musaitlik if b.date() >= self.simdi().date()})
         sonuc = []
         for gun in gunler:
-            slotlar = self.saat_tablosu(hastane, doktor, hizmet, gun)
-            sonuc.append((gun, len([s for s in slotlar if not s.dolu])))
+            slotlar = self.saat_tablosu(hastane, doktor, hizmet, gun, gecmisi_gizle=True)
+            if slotlar:                 # günün tüm saatleri geçmişte kaldıysa gösterilmez
+                sonuc.append((gun, len([s for s in slotlar if not s.dolu])))
         return sonuc
 
-    def saat_tablosu(self, hastane, doktor, hizmet, gun) -> list:
-        """Doktorun o günkü tüm saatleri (boş/dolu). Frontend bunu tablo yapacak."""
+    def saat_tablosu(self, hastane, doktor, hizmet, gun, gecmisi_gizle=False) -> list:
+        """Doktorun o günkü tüm saatleri (boş/dolu). Frontend bunu tablo yapacak.
+
+        gecmisi_gizle=True ise şu andan önceki saatler listelenmez (hasta ekranı için).
+        """
         slotlar = []
+        if hizmet.sure_dk <= 0:
+            return slotlar
         sure = timedelta(minutes=hizmet.sure_dk)
         for baslangic, bitis in doktor.musaitlik_listesi(gun):
             zaman = baslangic
             while zaman + sure <= bitis:
+                if gecmisi_gizle and zaman <= self.simdi():
+                    zaman += sure
+                    continue
                 if hastane.acik_mi(zaman, zaman + sure):
                     randevu = self._cakisan_randevu(doktor, zaman, zaman + sure)
                     slotlar.append(Slot(zaman, randevu is not None, randevu))
@@ -193,6 +211,8 @@ class RandevuSistemi:
     def randevu_olustur(self, hasta, hastane, klinik, doktor, hizmet, baslangic) -> Randevu:
         yeni = Randevu(hasta, hastane, klinik, doktor, hizmet, baslangic)
 
+        if yeni.baslangic <= self.simdi():
+            raise RandevuHatasi("Geçmiş tarih/saat için randevu alınamaz.")
         if klinik not in hastane.klinikler:
             raise RandevuHatasi("Bu klinik seçilen hastanede yok.")
         if doktor not in klinik.doktorlar:

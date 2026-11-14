@@ -1,4 +1,3 @@
-"""JSON ile kaydetme / yükleme."""
 import json
 import os
 from datetime import datetime, time
@@ -28,6 +27,7 @@ class Depo:
             "kullanicilar": [k.sozluge() for k in uyg.kullanicilar],
             "hastaneler": [self._hastane_sozluge(h) for h in uyg.kurum.hastaneler],
             "randevular": [self._randevu_sozluge(r) for r in uyg.sistem.randevular],
+            "gorevler": uyg.gorevler,
         }
         with open(self._dosya, "w", encoding="utf-8") as f:
             json.dump(veri, f, ensure_ascii=False, indent=2)
@@ -49,11 +49,15 @@ class Depo:
 
     def _randevu_sozluge(self, r) -> dict:
         return {
+            "id": r.id,
             "hasta": r.hasta.tc_no, "hastane": r.hastane.ad, "klinik": r.klinik.ad,
             "doktor": r.doktor.tc_no, "hizmet": r.hizmet.ad,
             "baslangic": r.baslangic.isoformat(), "durum": r.durum.name,
             "odenen_tutar": r.odenen_tutar,
             "recete": r.recete.sozluge() if r.recete else None,
+            "kabul_zamani": r.kabul_zamani.isoformat() if r.kabul_zamani else None,
+            "kabul_eden": r.kabul_eden.tc_no if hasattr(r.kabul_eden, "tc_no") else (str(r.kabul_eden) if r.kabul_eden else None),
+            "gelmedi": r.gelmedi_mi,
         }
 
     # ---------------- YÜKLE ----------------
@@ -96,15 +100,40 @@ class Depo:
                 hastane = uyg.kurum.hastane_bul(k["hastane"])
                 kisiler[k["tc_no"]].klinik_ata(hastane, hastane.klinik_bul(k["klinik"]))
 
+        # Doktorların müsaitliklerindeki hastane adlarını kurumdaki gerçek Hastane nesnelerine bağla
+        for k in uyg.kullanicilar:
+            if isinstance(k, Doktor):
+                k.hastane_referanslarini_bagla(uyg.kurum)
+
         for r in veri["randevular"]:
             hastane = uyg.kurum.hastane_bul(r["hastane"])
+            if not hastane:
+                continue
             klinik = hastane.klinik_bul(r["klinik"])
-            hizmet = [s for s in klinik.hizmetler if s.ad == r["hizmet"]][0]
+            if not klinik:
+                continue
+            hizmetler = [s for s in klinik.hizmetler if s.ad == r["hizmet"]]
+            if not hizmetler:
+                continue
+            hizmet = hizmetler[0]
+            kabul_zamani = datetime.fromisoformat(r["kabul_zamani"]) if r.get("kabul_zamani") else None
+            kabul_eden = kisiler.get(r.get("kabul_eden")) if r.get("kabul_eden") else None
+            gelmedi = bool(r.get("gelmedi", False))
             uyg.sistem.randevu_yukle(Randevu(
                 kisiler[r["hasta"]], hastane, klinik, kisiler[r["doktor"]], hizmet,
                 datetime.fromisoformat(r["baslangic"]),
                 RandevuDurumu[r["durum"]], r["odenen_tutar"],
-                Recete.sozlukten(r["recete"]) if r.get("recete") else None))
+                Recete.sozlukten(r["recete"]) if r.get("recete") else None,
+                kabul_zamani=kabul_zamani, kabul_eden=kabul_eden, gelmedi=gelmedi,
+                id=r.get("id")))
+
+        if "gorevler" in veri and isinstance(veri["gorevler"], dict):
+            for tur, liste in veri["gorevler"].items():
+                if tur in uyg.gorevler:
+                    for g in liste:
+                        if not any(mevcut.lower() == g.lower() for mevcut in uyg.gorevler[tur]):
+                            uyg.gorevler[tur].append(g)
+
         return uyg
 
     def _kimlik_yukle(self, kisi, k: dict, varsayilan) -> None:
@@ -117,6 +146,8 @@ class Depo:
             kisi.sifre_belirle(Sifre.sozlukten(k["sifre"]))
         elif kisi.kayitli_mi:
             kisi.sifre_belirle(varsayilan)
+        if k.get("ceza_bitis") and hasattr(kisi, "ceza_bitis_yukle"):
+            kisi.ceza_bitis_yukle(datetime.fromisoformat(k["ceza_bitis"]))
 
     def _kullanici_olustur(self, k: dict):
         tur = k["tur"]
@@ -137,8 +168,11 @@ class Depo:
         if tur == "Hemsire":
             return Hemsire(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
         doktor = Doktor(k["ad"], k["soyad"], k["tc_no"], k["uzmanlik"])
-        for baslangic, bitis in k.get("musaitlik", []):
-            doktor.musaitlik_yukle(datetime.fromisoformat(baslangic), datetime.fromisoformat(bitis))
+        for m in k.get("musaitlik", []):
+            b = datetime.fromisoformat(m[0])
+            s = datetime.fromisoformat(m[1])
+            h = m[2] if len(m) >= 3 else None
+            doktor.musaitlik_yukle(b, s, h)
         return doktor
 
     def _hizmet_olustur(self, s: dict):

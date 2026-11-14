@@ -1,4 +1,3 @@
-"""Doktor veya klinik adına göre arama ve en yakın boş randevu."""
 from datetime import datetime
 
 _TR = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")

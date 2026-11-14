@@ -1,4 +1,3 @@
-"""Ödeme yöntemleri: soyut Odeme + alt sınıflar (soyutlama, kalıtım, çok biçimlilik)."""
 from abc import ABC, abstractmethod
 
 

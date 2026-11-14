@@ -1,11 +1,11 @@
-"""Flask arayüzü: iş mantığı randevu/ paketinde, burada sadece sayfalar var."""
+
 from datetime import date, datetime, time, timedelta
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 
 from randevu.hatalar import SistemHatasi
 from randevu.kullanici import (Hasta, Doktor, Yonetici, SaglikPersoneli, Asistan,
-                               Hemsire, Teknisyen)
+                               Hemsire, Teknisyen, HastaneYoneticisi, KlinikYoneticisi)
 from randevu.kurum import Hastane, Klinik, Muayene, Radyoloji, Laboratuvar
 from randevu.odeme import NakitOdeme, KartOdeme, SigortaOdeme
 from randevu.arama import Arama, sadelestir
@@ -32,6 +32,11 @@ def simdiki_kullanici():
 def tum_klinikler() -> list:
     """[(hastane, klinik), ...] - formlardaki 'Hastane / Klinik' seçimi için."""
     return [(h, k) for h in uyg.kurum.hastaneler for k in h.klinikler]
+
+
+def tum_hizmetler() -> list:
+    """[(hastane, klinik, hizmet), ...] - formlardaki 'Hizmet sil' seçimi için."""
+    return [(h, k, s) for h in uyg.kurum.hastaneler for k in h.klinikler for s in k.hizmetler]
 
 
 def kaydet() -> None:
@@ -86,8 +91,14 @@ def giris():
     if isim and secili:
         aranan = sadelestir(isim)
         liste = [(sira, k) for sira, k in liste if aranan in sadelestir(k.tam_ad)]
+    hastaneler = uyg.kurum.hastaneler
+    secili_hastane = request.args.get("hastane", "").strip()
+    if secili_hastane and secili in ("personel", "admin"):
+        liste = [(sira, k) for sira, k in liste
+                 if any(secili_hastane == h.ad for h in getattr(k, 'hastaneler', lambda kurum: [])(uyg.kurum))]
     return render_template("giris.html", gruplar=gruplar, secili=secili, liste=liste,
                            kategoriler=kategoriler, secili_rol=secili_rol, isim=isim,
+                           hastaneler=hastaneler, secili_hastane=secili_hastane,
                            baslik=GRUPLAR[secili][0] if secili in GRUPLAR else "")
 
 
@@ -209,6 +220,9 @@ def hasta_sayfasi(hasta: Hasta):
 @app.post("/hasta/randevu-al")
 def randevu_al():
     hasta = simdiki_kullanici()
+    if hasattr(hasta, "randevu_engeli_var_mi") and hasta.randevu_engeli_var_mi():
+        flash(f"Randevunuza gelmediğiniz için {hasta.engel_bitis_metni()} tarihine kadar yeni randevu alamazsınız.", "hata")
+        return redirect(url_for("panel"))
     f = request.form
 
     def islem():
@@ -222,24 +236,39 @@ def randevu_al():
     return redirect(url_for("panel"))
 
 
-@app.post("/hasta/iptal/<int:sira>")
-def hasta_iptal(sira):
-    calistir(lambda: simdiki_kullanici().randevu_iptal(uyg.sistem.randevular[sira]),
+@app.post("/hasta/iptal/<randevu_id>")
+def hasta_iptal(randevu_id):
+    hasta = simdiki_kullanici()
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
+    if r.hasta is not hasta:
+        flash("Sadece kendi randevunuzu iptal edebilirsiniz.", "hata")
+        return redirect(url_for("panel"))
+    if r.odendi_mi:
+        flash("Ödemesi yapılmış randevu iptal edilemez.", "hata")
+        return redirect(url_for("panel"))
+    calistir(lambda: hasta.randevu_iptal(r),
              "Randevu iptal edildi.")
     return redirect(url_for("panel"))
 
 
-@app.post("/hasta/odeme/<int:sira>")
-def hasta_odeme(sira):
+@app.post("/hasta/odeme/<randevu_id>")
+def hasta_odeme(randevu_id):
     kullanici = simdiki_kullanici()
     if kullanici is None:
         flash("Ödeme için giriş yapmalısınız.", "hata")
         return redirect(url_for("giris"))
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
     odeme = ODEMELER.get(request.form.get("yontem"))
     if odeme is None:
         flash("Geçersiz ödeme yöntemi.", "hata")
         return redirect(url_for("panel"))
-    calistir(lambda: kullanici.odeme_yap(uyg.sistem.randevular[sira], odeme), "Ödeme alındı.")
+    calistir(lambda: kullanici.odeme_yap(r, odeme), "Ödeme alındı.")
     return redirect(url_for("panel"))
 
 
@@ -247,8 +276,55 @@ def hasta_odeme(sira):
 def personel_sayfasi(personel: SaglikPersoneli):
     doktor = personel.doktor if isinstance(personel, Asistan) else None
     randevular = uyg.sistem.doktorun_randevulari(doktor) if doktor else []
+    bugunku_randevular = []
+    secili_tarih = request.args.get("tarih", "").strip()
+    if isinstance(personel, Hemsire):
+        tum_randevular = list(uyg.sistem.randevular)
+        filtre_gun = None
+        if secili_tarih == "bugun":
+            filtre_gun = date.today()
+        elif secili_tarih and secili_tarih != "tumu":
+            try:
+                filtre_gun = datetime.strptime(secili_tarih, "%Y-%m-%d").date()
+            except ValueError:
+                filtre_gun = None
+        onaylilar = personel.onayli_randevular(tum_randevular, gun=filtre_gun)
+        onaylilar.sort(key=lambda r: r.baslangic)
+        bugunku_randevular = [(tum_randevular.index(r), r) for r in onaylilar]
     return render_template("personel.html", kullanici=personel, doktor=doktor,
-                           randevular=randevular)
+                           randevular=randevular, bugunku_randevular=bugunku_randevular,
+                           secili_tarih=secili_tarih)
+
+
+@app.post("/hemsire/hasta-kabul/<randevu_id>")
+def hemsire_hasta_kabul(randevu_id):
+    hemsire = simdiki_kullanici()
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(request.referrer or url_for("panel"))
+    # Ödeme yapılmışsa sadece kabul; yapılmamışsa ödeme yerinde alınır ve kabul birlikte yapılır
+    odeme = None
+    mesaj = "Hasta kabulü yapıldı."
+    if not r.odendi_mi:
+        odeme = ODEMELER.get(request.form.get("yontem", "nakit"))
+        if odeme is None:
+            flash("Geçersiz ödeme yöntemi.", "hata")
+            return redirect(request.referrer or url_for("panel"))
+        mesaj = "Ödeme alındı ve hasta kabulü yapıldı."
+    calistir(lambda: hemsire.hasta_kabul(r, odeme=odeme), mesaj)
+    return redirect(request.referrer or url_for("panel"))
+
+
+@app.post("/hemsire/hasta-gelmedi/<randevu_id>")
+def hemsire_hasta_gelmedi(randevu_id):
+    hemsire = simdiki_kullanici()
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(request.referrer or url_for("panel"))
+    calistir(lambda: hemsire.hasta_gelmedi(r), "Hasta gelmedi olarak işaretlendi. 24 saat randevu engeli uygulandı.")
+    return redirect(request.referrer or url_for("panel"))
 
 
 # ---------------- DOKTOR ----------------
@@ -266,13 +342,18 @@ def doktor_sayfasi(doktor: Doktor):
         except (ValueError, IndexError):
             secili = 0
             hastane, _, hizmet = secenekler[0]
-        gunler = sorted({b.date() for b, _ in doktor.musaitlik})
+        gunler = sorted({
+            m[0].date() for m in doktor.musaitlik
+            if getattr(m, "hastane", None) in (None, hastane)
+        })
         takvim = [(gun, uyg.sistem.saat_tablosu(hastane, doktor, hizmet, gun)) for gun in gunler]
     musaitlikler = sorted(enumerate(doktor.musaitlik), key=lambda cift: cift[1][0])
     klinik_hizmetleri = []              # "Sunduğum hizmetler" formu için
     klinik_asistanlari = []             # Klinik seçip o klinikteki asistanı kendine bağlama
     for sira, klinik in enumerate(doktor.klinikler):
-        hastane = next(h for h in uyg.kurum.hastaneler if klinik in h.klinikler)
+        hastane = next((h for h in uyg.kurum.hastaneler if klinik in h.klinikler), None)
+        if not hastane:
+            continue
         sunulan = doktor.sunulan_hizmetler(klinik)
         klinik_hizmetleri.append((sira, hastane, klinik,
                                   [(i, s, s in sunulan) for i, s in enumerate(klinik.hizmetler)]))
@@ -281,24 +362,36 @@ def doktor_sayfasi(doktor: Doktor):
             if isinstance(p, Asistan) and p.doktor is not doktor
         ]
         klinik_asistanlari.append((sira, hastane, klinik, uygun_asistanlar))
+    doktor_klinikleri = doktor.klinik_konumlari(uyg.kurum)
+    doktor_hastaneleri = doktor.hastaneler(uyg.kurum)
     return render_template("doktor.html", kullanici=doktor, secenekler=secenekler,
                            klinik_hizmetleri=klinik_hizmetleri,
                            klinik_asistanlari=klinik_asistanlari,
+                           doktor_klinikleri=doktor_klinikleri,
+                           doktor_hastaneleri=doktor_hastaneleri,
                            musaitlikler=musaitlikler,
                            secili=secili, takvim=takvim,
                            randevular=[(uyg.sistem.randevular.index(r), r) for r in randevular])
 
 
-@app.post("/doktor/onayla/<int:sira>")
-def doktor_onayla(sira):
-    calistir(lambda: simdiki_kullanici().randevu_onayla(uyg.sistem.randevular[sira]),
+@app.post("/doktor/onayla/<randevu_id>")
+def doktor_onayla(randevu_id):
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
+    calistir(lambda: simdiki_kullanici().randevu_onayla(r),
              "Randevu onaylandı.")
     return redirect(url_for("panel"))
 
 
-@app.post("/doktor/reddet/<int:sira>")
-def doktor_reddet(sira):
-    calistir(lambda: simdiki_kullanici().randevu_reddet(uyg.sistem.randevular[sira]),
+@app.post("/doktor/reddet/<randevu_id>")
+def doktor_reddet(randevu_id):
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
+    calistir(lambda: simdiki_kullanici().randevu_reddet(r),
              "Randevu reddedildi.")
     return redirect(url_for("panel"))
 
@@ -306,8 +399,17 @@ def doktor_reddet(sira):
 @app.post("/doktor/musaitlik")
 def doktor_musaitlik():
     f = request.form
-    calistir(lambda: simdiki_kullanici().musaitlik_ekle(
-        datetime.fromisoformat(f["baslangic"]), datetime.fromisoformat(f["bitis"])),
+    doktor = simdiki_kullanici()
+    hastane_adi = f.get("hastane")
+    hastane = uyg.kurum.hastane_bul(hastane_adi) if hastane_adi else None
+    if hastane is None:
+        hastaneler = doktor.hastaneler(uyg.kurum)
+        if hastaneler:
+            hastane = hastaneler[0]
+    calistir(lambda: doktor.musaitlik_ekle(
+        datetime.fromisoformat(f["baslangic"]),
+        datetime.fromisoformat(f["bitis"]),
+        hastane),
         "Müsaitlik eklendi.")
     return redirect(url_for("panel"))
 
@@ -325,12 +427,16 @@ def doktor_hizmetler():
     return redirect(url_for("panel"))
 
 
-@app.post("/doktor/recete/<int:sira>")
-def doktor_recete(sira):
+@app.post("/doktor/recete/<randevu_id>")
+def doktor_recete(randevu_id):
     """Doktor, onaylı randevu için reçete yazar. İlaçlar satır satır girilir."""
     f = request.form
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
     calistir(lambda: simdiki_kullanici().recete_yaz(
-        uyg.sistem.randevular[sira], f.get("ilaclar", "").splitlines(), f.get("doktor_notu", "")),
+        r, f.get("ilaclar", "").splitlines(), f.get("doktor_notu", "")),
         "Reçete kaydedildi.")
     return redirect(url_for("panel"))
 
@@ -376,26 +482,100 @@ def admin_sayfasi(admin: Yonetici):
             if isinstance(p, Asistan) and p.doktor is not secili_doktor
         ]
     hastane_secenekleri = [(uyg.kurum.hastaneler.index(h), h)
-                           for h in admin.yonetilen_hastaneler(uyg.kurum)]
-    klinik_secenekleri = [(tum_kl.index((h, k)), h, k) for h, k in yonetilen_kl]
-    asistan_secenekleri = [(tum_asistanlar.index(a), a) for a in tum_asistanlar
-                           if any(k in yonetilen_kume for k in a.klinikler)]
-    doktor_secenekleri = [(uyg.doktorlar().index(d), d) for d in uyg.doktorlar()
-                          if any(k in yonetilen_kume for k in d.klinikler)]
+                           for h in admin.yonetilen_hastaneler(uyg.kurum)
+                           if h in uyg.kurum.hastaneler]
+    klinik_secenekleri = [(tum_kl.index((h, k)), h, k) for h, k in yonetilen_kl if (h, k) in tum_kl]
+    tum_hz = tum_hizmetler()
+    hizmet_secenekleri = [(tum_hz.index((h, k, s)), h, k, s)
+                          for h, k in yonetilen_kl
+                          for s in k.hizmetler
+                          if (h, k, s) in tum_hz]
+
+    def kisi_konumu(kisi):
+        konumlar = [f"{h.ad} / {k.ad}" for h in uyg.kurum.hastaneler for k in h.klinikler if k in kisi.klinikler]
+        return ", ".join(konumlar) if konumlar else "Klinik atanmadı"
+
+    def kisi_hastaneleri(kisi):
+        return [h.ad for h in uyg.kurum.hastaneler if any(k in h.klinikler for k in kisi.klinikler)]
+
+    def kisi_klinikleri(kisi):
+        return [k.ad for k in kisi.klinikler]
+
+    asistan_secenekleri = [
+        (tum_asistanlar.index(a), a, kisi_konumu(a), kisi_hastaneleri(a), kisi_klinikleri(a))
+        for a in tum_asistanlar
+        if (not a.klinikler) or any(k in yonetilen_kume for k in a.klinikler)
+    ]
+
+    secili_as_sira = int(ara["as"]) if ara.get("as", "").isdigit() and int(ara["as"]) < len(tum_asistanlar) else (asistan_secenekleri[0][0] if asistan_secenekleri else None)
+    secili_asistan = tum_asistanlar[secili_as_sira] if secili_as_sira is not None else None
+
+    ham_doktorlar = [
+        (uyg.doktorlar().index(d), d, kisi_konumu(d), kisi_hastaneleri(d), kisi_klinikleri(d))
+        for d in uyg.doktorlar()
+        if any(k in yonetilen_kume for k in d.klinikler)
+    ]
+
+    # Seçilen asistana göre doktorları filtrele:
+    # 1. Asistanın bağlı olduğu klinik varsa: SADECE aynı hastane ve klinikteki doktorlar
+    # 2. Asistanın bağlı hastanesi yoksa: uzmanlığıyla alakalı doktorlar
+    if secili_asistan and secili_asistan.klinikler:
+        doktor_secenekleri = [
+            d_item for d_item in ham_doktorlar
+            if any(k in d_item[1].klinikler for k in secili_asistan.klinikler)
+        ]
+    elif secili_asistan:
+        as_uzm = secili_asistan.uzmanlik.lower().strip()
+        if as_uzm == "asistan" or not as_uzm:
+            doktor_secenekleri = ham_doktorlar
+        else:
+            alakali = [
+                d_item for d_item in ham_doktorlar
+                if (d_item[1].uzmanlik.lower() in as_uzm
+                    or as_uzm in d_item[1].uzmanlik.lower()
+                    or any(w in d_item[1].uzmanlik.lower() for w in as_uzm.split() if len(w) > 3))
+            ]
+            doktor_secenekleri = alakali if alakali else ham_doktorlar
+    else:
+        doktor_secenekleri = ham_doktorlar
+
+    doktor_secenekleri.sort(key=lambda item: item[1].tam_ad)
+
     yapi = [(h, [k for h2, k in yonetilen_kl if h2 is h])
             for h in admin.yonetilen_hastaneler(uyg.kurum)]
     randevular = [(uyg.sistem.randevular.index(r), r)
                   for r in admin.yonetilen_randevular(uyg.sistem)]
+
+    if isinstance(admin, KlinikYoneticisi) and admin.klinik:
+        kl_ad = admin.klinik.ad
+        kl_ad_lower = kl_ad.lower()
+        asistan_listesi = [g for g in uyg.gorevler.get("asistan", [])
+                           if kl_ad_lower in g.lower() or g.lower() in kl_ad_lower]
+        if not asistan_listesi:
+            asistan_listesi = [f"{kl_ad} Asistanı"]
+        gorevler_veri = {
+            "doktor": [kl_ad],
+            "asistan": asistan_listesi,
+            "hemsire": list(uyg.gorevler.get("hemsire", [])),
+            "teknisyen": list(uyg.gorevler.get("teknisyen", [])),
+        }
+    else:
+        gorevler_veri = uyg.gorevler
+
     return render_template("admin.html", kullanici=admin,
                            hastane_secenekleri=hastane_secenekleri,
                            klinik_secenekleri=klinik_secenekleri,
+                           hizmet_secenekleri=hizmet_secenekleri,
                            yonetilen_kl=yonetilen_kl,
                            yonetilebilir_kullanicilar=admin.yonetilebilir_kullanicilar(uyg),
                            doktorlar=doktor_secenekleri,
+                           tum_doktorlar=ham_doktorlar,
+                           gorevler=gorevler_veri,
                            personeller=list(enumerate(personeller())),
                            asistanlar=asistan_secenekleri,
+                           secili_as_sira=secili_as_sira,
                            secili_kl_sira=secili_kl_sira,
-                           klinik_doktorlari=[(uyg.doktorlar().index(d), d) for d in klinik_doktorlari],
+                           klinik_doktorlari=[(uyg.doktorlar().index(d), d) for d in klinik_doktorlari if d in uyg.doktorlar()],
                            secili_dr_sira=secili_dr_sira,
                            secili_doktor=secili_doktor,
                            uygun_asistanlar=uygun_asistanlar,
@@ -420,6 +600,37 @@ def admin_klinik():
     return redirect(url_for("panel"))
 
 
+@app.post("/admin/hastane-duzenle")
+def admin_hastane_duzenle():
+    f = request.form
+
+    def islem():
+        hastane = uyg.kurum.hastaneler[int(f["h"])]
+        simdiki_kullanici().hastane_duzenle(
+            uyg, hastane, f["ad"], time.fromisoformat(f["acilis"]), time.fromisoformat(f["kapanis"]))
+    calistir(islem, "Hastane güncellendi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/hastane-sil")
+def admin_hastane_sil():
+    f = request.form
+    calistir(lambda: simdiki_kullanici().hastane_sil(uyg, uyg.kurum.hastaneler[int(f["h"])]),
+             "Hastane silindi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/klinik-sil")
+def admin_klinik_sil():
+    f = request.form
+
+    def islem():
+        hastane, klinik = tum_klinikler()[int(f["klinik"])]
+        simdiki_kullanici().klinik_sil(uyg, hastane, klinik)
+    calistir(islem, "Klinik silindi.")
+    return redirect(url_for("panel"))
+
+
 @app.post("/admin/hizmet")
 def admin_hizmet():
     f = request.form
@@ -428,14 +639,26 @@ def admin_hizmet():
         _, klinik = tum_klinikler()[int(f["klinik"])]
         ad, sure, ucret = f["ad"], int(f["sure"]), float(f["ucret"])
         ekstra = float(f.get("ekstra") or 0)
-        if f["tur"] == "radyoloji":
+        tur = f.get("tur", "muayene")
+        if tur == "radyoloji" or (tur == "muayene" and ekstra > 0):
             hizmet = Radyoloji(ad, sure, ucret, ekstra)
-        elif f["tur"] == "laboratuvar":
+        elif tur == "laboratuvar":
             hizmet = Laboratuvar(ad, sure, ucret, int(ekstra) or 1)
         else:
             hizmet = Muayene(ad, sure, ucret)
         simdiki_kullanici().hizmet_ekle(klinik, hizmet)
     calistir(islem, "Hizmet eklendi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/hizmet-sil")
+def admin_hizmet_sil():
+    f = request.form
+
+    def islem():
+        hastane, klinik, hizmet = tum_hizmetler()[int(f["hizmet"])]
+        simdiki_kullanici().hizmet_sil(uyg, hastane, klinik, hizmet)
+    calistir(islem, "Hizmet silindi.")
     return redirect(url_for("panel"))
 
 
@@ -445,17 +668,27 @@ def admin_personel():
 
     def islem():
         tur, ad, soyad, tc = f["tur"], f["ad"], f["soyad"], f["tc"]
-        uzmanlik = f.get("uzmanlik") or tur.title()
         if tur == "doktor":
+            uzmanlik = f.get("uzmanlik", "").strip() or "Dahiliye"
             kisi = Doktor(ad, soyad, tc, uzmanlik)
         elif tur == "asistan":
-            kisi = Asistan(ad, soyad, tc, uzmanlik)
+            kisi = Asistan(ad, soyad, tc, "Asistan")
         elif tur == "hemsire":
-            kisi = Hemsire(ad, soyad, tc, uzmanlik)
+            kisi = Hemsire(ad, soyad, tc, "Hemşirelik")
         else:
+            uzmanlik = f.get("uzmanlik", "").strip() or "Radyoloji"
             kisi = Teknisyen(ad, soyad, tc, uzmanlik, f.get("cihaz") or "Cihaz")
         simdiki_kullanici().personel_kaydet(uyg, kisi)
     calistir(islem, "Personel kaydedildi.")
+    return redirect(url_for("panel"))
+
+
+@app.post("/admin/gorev")
+def admin_gorev_ekle():
+    f = request.form
+    tur = f.get("tur", "doktor").strip() or "doktor"
+    calistir(lambda: simdiki_kullanici().gorev_ekle(uyg, tur, f["ad"]),
+             "Uzmanlık alanı eklendi.")
     return redirect(url_for("panel"))
 
 
@@ -497,23 +730,35 @@ def admin_asistan_ayir():
     return redirect(url_for("panel"))
 
 
-@app.post("/admin/randevu-onayla/<int:sira>")
-def admin_randevu_onayla(sira):
-    calistir(lambda: simdiki_kullanici().randevu_onayla(uyg.sistem.randevular[sira]),
+@app.post("/admin/randevu-onayla/<randevu_id>")
+def admin_randevu_onayla(randevu_id):
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
+    calistir(lambda: simdiki_kullanici().randevu_onayla(r),
              "Randevu onaylandı.")
     return redirect(url_for("panel"))
 
 
-@app.post("/admin/randevu-reddet/<int:sira>")
-def admin_randevu_reddet(sira):
-    calistir(lambda: simdiki_kullanici().randevu_reddet(uyg.sistem.randevular[sira]),
+@app.post("/admin/randevu-reddet/<randevu_id>")
+def admin_randevu_reddet(randevu_id):
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
+    calistir(lambda: simdiki_kullanici().randevu_reddet(r),
              "Randevu reddedildi.")
     return redirect(url_for("panel"))
 
 
-@app.post("/admin/randevu-iptal/<int:sira>")
-def admin_randevu_iptal(sira):
-    calistir(lambda: simdiki_kullanici().randevu_iptal(uyg.sistem.randevular[sira]),
+@app.post("/admin/randevu-iptal/<randevu_id>")
+def admin_randevu_iptal(randevu_id):
+    r = uyg.sistem.randevu_bul(randevu_id)
+    if not r:
+        flash("Randevu bulunamadı veya silinmiş.", "hata")
+        return redirect(url_for("panel"))
+    calistir(lambda: simdiki_kullanici().randevu_iptal(r),
              "Randevu iptal edildi.")
     return redirect(url_for("panel"))
 

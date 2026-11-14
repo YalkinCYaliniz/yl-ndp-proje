@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block icerik %}
+{% if kullanici.randevu_engeli_var_mi() %}
+<div class="mesaj hata" style="font-size:0.95rem; margin-bottom:16px;">
+  <b>Randevu Engeli:</b> Daha önceki randevunuza gelmediğiniz için <b>{{ kullanici.engel_bitis_metni() }}</b> tarihine kadar yeni randevu alamazsınız.
+</div>
+{% endif %}
 {% if not kullanici.kayitli_mi %}
 <div class="bilgi">Misafir olarak devam ediyorsunuz. Çıkış yaptığınızda bu randevuları tekrar göremezsiniz.
   <a href="{{ url_for('kayit') }}">Kayıt olun</a></div>
@@ -18,7 +23,7 @@
     <td>{{ s.hastane.ad }}<br><small>{{ s.klinik.ad }}</small></td>
     <td>{{ s.doktor.tam_ad }}<br><small>{{ s.doktor.uzmanlik }}</small>
         {% if s.doktor.asistanlar %}<br><span class="asistan">{{ s.doktor.asistan_metni }}</span>{% endif %}</td>
-    <td>{{ s.hizmet.ad }}<br><small>{{ s.hizmet.sure_dk }} dk · {{ s.hizmet.ucret }} TL</small></td>
+    <td>{{ s.hizmet.ad }}<br><small>{{ s.hizmet.sure_dk }} dk · {{ s.hizmet.ucret_metni }}</small></td>
     <td>{% if s.en_yakin %}<span class="slot bos" style="margin:0">{{ s.en_yakin.baslangic.strftime('%d.%m.%Y %H:%M') }}</span>
         {% else %}<span class="rozet iptal">Boş randevu yok</span>{% endif %}</td>
     <td>{% if s.en_yakin %}<a href="{{ url_for('panel', h=s.hastane_sira, k=s.klinik_sira, d=s.doktor_sira, s=s.hizmet_sira, tarih=s.en_yakin.baslangic.date().isoformat()) }}"><button type="button">Saatleri gör</button></a>{% endif %}</td>
@@ -48,7 +53,7 @@
   {% if secim.doktor %}
   <select name="s" onchange="this.form.submit()">
     <option value="">Hizmet seçin</option>
-    {% for s in secim.hizmetler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('s') == loop.index0|string }}>{{ s.ad }} · {{ s.tur() }} · {{ s.sure_dk }} dk · {{ s.ucret }} TL</option>{% endfor %}
+    {% for s in secim.hizmetler %}<option value="{{ loop.index0 }}" {{ 'selected' if ara.get('s') == loop.index0|string }}>{{ s.ad }} · {{ s.tur() }} · {{ s.sure_dk }} dk · {{ s.ucret_metni }}</option>{% endfor %}
   </select>
   {% endif %}
   <noscript><button>Devam</button></noscript>
@@ -74,8 +79,8 @@
   <h3>Saat Tablosu <small>(yeşil: boş, kırmızı: dolu)</small></h3>
   {% if not secim.slotlar %}<p>Bu tarihte doktorun müsait saati yok.</p>{% endif %}
   {% for slot in secim.slotlar %}
-    {% if slot.dolu %}
-      <span class="slot dolu">{{ slot.baslangic.strftime('%H:%M') }}</span>
+    {% if slot.dolu or kullanici.randevu_engeli_var_mi() %}
+      <span class="slot dolu" title="{{ 'Randevunuza gelmediğiniz için engeliniz bulunmaktadır' if kullanici.randevu_engeli_var_mi() else 'Dolu' }}">{{ slot.baslangic.strftime('%H:%M') }}</span>
     {% else %}
       <form class="satir" method="post" action="{{ url_for('randevu_al') }}">
         <input type="hidden" name="h" value="{{ ara['h'] }}"><input type="hidden" name="k" value="{{ ara['k'] }}">
@@ -96,14 +101,16 @@
     <td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
     <td>{{ r.doktor.tam_ad }} <small>({{ r.doktor.uzmanlik }})</small>{% if r.doktor.asistanlar %}<br><span class="asistan">{{ r.doktor.asistan_metni }}</span>{% endif %}</td>
     <td>{{ r.hizmet.ad }}</td>
-    <td>{{ r.hizmet.ucret }} TL{% if r.odendi_mi %}<br><small>Ödendi: {{ r.odenen_tutar }} TL</small>{% endif %}</td>
-    <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span></td>
+    <td>{{ r.hizmet.ucret_metni }}{% if r.odendi_mi %}<br><small>Ödendi: {{ r.odenen_tutar }} TL</small>{% endif %}</td>
+    <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span>
+      {% if r.kabul_edildi_mi %}<br><span class="rozet onaylandi" style="margin-top:4px">{{ r.kabul_metni }}</span>
+      {% elif r.gelmedi_mi %}<br><span class="rozet iptal" style="margin-top:4px">{{ r.kabul_metni }}</span>{% endif %}</td>
     <td>
-      {% if r.aktif_mi %}
-      <form class="satir" method="post" action="{{ url_for('hasta_iptal', sira=sira) }}"><button class="tehlike">İptal et</button></form>
+      {% if r.aktif_mi and not r.odendi_mi and not r.gelmedi_mi %}
+      <form class="satir" method="post" action="{{ url_for('hasta_iptal', randevu_id=r.id) }}"><button class="tehlike">İptal et</button></form>
       {% endif %}
       {% if r.durum.value == 'Onaylandı' and not r.odendi_mi %}
-      <form class="satir" method="post" action="{{ url_for('hasta_odeme', sira=sira) }}">
+      <form class="satir" method="post" action="{{ url_for('hasta_odeme', randevu_id=r.id) }}">
         <select name="yontem"><option value="nakit">Nakit</option><option value="kart">Kart (3 taksit)</option><option value="sigorta">Sigorta</option></select>
         <button class="yesil">Öde</button>
       </form>

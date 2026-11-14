@@ -1,6 +1,3 @@
-"""Projeye özel hata sınıfları (kalıtım: hepsi SistemHatasi'ndan türer)."""
-
-
 class SistemHatasi(Exception):
     """Tüm proje hatalarının ortak atası."""
 

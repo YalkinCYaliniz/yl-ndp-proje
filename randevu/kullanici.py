@@ -1,9 +1,9 @@
-"""Kullanıcı sınıf hiyerarşisi: soyut taban sınıf + kalıtım + çok biçimlilik."""
+from datetime import datetime, timedelta
 import re
 from abc import ABC, abstractmethod
 
 from randevu.guvenlik import Sifre
-from randevu.hatalar import RandevuHatasi, SistemHatasi, YetkiHatasi
+from randevu.hatalar import BulunamadiHatasi, RandevuHatasi, SistemHatasi, YetkiHatasi
 from randevu.recete import Recete
 
 _TR = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
@@ -100,6 +100,9 @@ class Kullanici(ABC):
     def yetki_var_mi(self, islem: str) -> bool:
         return islem in self.yetkiler()
 
+    def birim_kaldirildi(self, birim) -> None:
+        """Bir hastane/klinik silindiğinde çağrılır. Sorumlu olan yöneticiler bunu ezer."""
+
     def _yetki_kontrol(self, islem: str) -> None:
         """Alt sınıfların metotları işlem öncesi bunu çağırır."""
         if not self.yetki_var_mi(islem):
@@ -112,6 +115,35 @@ class Kullanici(ABC):
 class Hasta(Kullanici):
     """Normal kullanıcı: randevu alır ve sadece kendi randevusunu iptal eder."""
 
+    def __init__(self, ad: str, soyad: str, tc_no: str):
+        super().__init__(ad, soyad, tc_no)
+        self._ceza_bitis = None
+
+    def ceza_ver(self, saat_sayisi: int = 24, baslangic: datetime = None) -> None:
+        """Randevuya gelinmediğinde randevu alma engeli uygular."""
+        baslangic = baslangic or datetime.now()
+        bitis = baslangic + timedelta(hours=saat_sayisi)
+        if self._ceza_bitis is None or bitis > self._ceza_bitis:
+            self._ceza_bitis = bitis
+
+    def ceza_bitis_yukle(self, bitis: datetime) -> None:
+        self._ceza_bitis = bitis
+
+    @property
+    def ceza_bitis(self):
+        return self._ceza_bitis
+
+    def randevu_engeli_var_mi(self, su_an_zamani: datetime = None) -> bool:
+        if self._ceza_bitis is None:
+            return False
+        simdi = su_an_zamani or datetime.now()
+        return simdi < self._ceza_bitis
+
+    def engel_bitis_metni(self, su_an_zamani: datetime = None) -> str:
+        if not self.randevu_engeli_var_mi(su_an_zamani):
+            return ""
+        return self._ceza_bitis.strftime("%d.%m.%Y %H:%M")
+
     def rol(self) -> str:
         return "Hasta"
 
@@ -120,6 +152,9 @@ class Hasta(Kullanici):
 
     def randevu_al(self, sistem, hastane, klinik, doktor, hizmet, baslangic):
         self._yetki_kontrol("randevu_al")
+        simdi = sistem.simdi() if hasattr(sistem, "simdi") else datetime.now()
+        if self.randevu_engeli_var_mi(simdi):
+            raise RandevuHatasi(f"Randevunuza gelmediğiniz için {self.engel_bitis_metni(simdi)} tarihine kadar yeni randevu alamazsınız.")
         return sistem.randevu_olustur(self, hastane, klinik, doktor, hizmet, baslangic)
 
     def odeme_yap(self, randevu, odeme) -> float:
@@ -143,6 +178,11 @@ class Hasta(Kullanici):
         if randevu.hasta is not self:
             raise YetkiHatasi("Başkasının randevusunu iptal edemezsiniz.")
         randevu.iptal()
+
+    def sozluge(self) -> dict:
+        veri = super().sozluge()
+        veri["ceza_bitis"] = self._ceza_bitis.isoformat() if self._ceza_bitis else None
+        return veri
 
 
 class Misafir(Hasta):
@@ -207,6 +247,11 @@ class SaglikPersoneli(Kullanici):
         if klinik not in self._klinikler:
             self._klinikler.append(klinik)
 
+    def klinikten_ayril(self, klinik) -> None:
+        """Klinik kapatılınca çağrılır (Doktor ve Asistan bunu ezer)."""
+        if klinik in self._klinikler:
+            self._klinikler.remove(klinik)
+
     @property
     def klinikler(self) -> tuple:
         return tuple(self._klinikler)    # dışarıya salt okunur
@@ -226,10 +271,62 @@ class SaglikPersoneli(Kullanici):
             sonuc.extend(klinik.hizmetler)
         return sonuc
 
+    def hizmet_cikarildi(self, klinik, hizmet) -> None:
+        """Klinikten bir hizmet silindiğinde alt sınıflar (örn: Doktor) gerekirse günceller."""
+
+    def hastaneler(self, kurum=None) -> list:
+        """Personelin çalıştığı hastaneler."""
+        if kurum is not None:
+            return [h for h in kurum.hastaneler if any(k in h.klinikler for k in self._klinikler)]
+        sonuc = []
+        for k in self._klinikler:
+            h = getattr(k, "hastane", None)
+            if h and h not in sonuc:
+                sonuc.append(h)
+        return sonuc
+
+    def hastane_metni(self, kurum=None) -> str:
+        """Personelin bağlı olduğu hastanelerin kısa metni."""
+        h_list = self.hastaneler(kurum)
+        if not h_list:
+            return "Hastane atanmadı"
+        return ", ".join(h.ad for h in h_list)
+
+    def klinik_konumlari(self, kurum=None) -> list:
+        """(hastane, klinik) çiftleri listesi."""
+        if kurum is not None:
+            return [(h, k) for h in kurum.hastaneler for k in h.klinikler if k in self._klinikler]
+        sonuc = []
+        for k in self._klinikler:
+            h = getattr(k, "hastane", None)
+            if h:
+                sonuc.append((h, k))
+        return sonuc
+
     def sozluge(self) -> dict:
         veri = super().sozluge()
         veri["uzmanlik"] = self.uzmanlik
         return veri
+
+
+class Musaitlik(tuple):
+    """Doktorun belirli bir hastanedeki müsaitlik aralığı.
+
+    tuple alt sınıfıdır: (baslangic, bitis) olarak geriye uyumlu davranır,
+    hastane özniteliği ile hangi hastaneye ait olduğunu taşır.
+    """
+    def __new__(cls, baslangic, bitis, hastane=None):
+        obj = super().__new__(cls, (baslangic, bitis))
+        obj.hastane = hastane
+        return obj
+
+    @property
+    def baslangic(self):
+        return self[0]
+
+    @property
+    def bitis(self):
+        return self[1]
 
 
 class Doktor(SaglikPersoneli):
@@ -251,47 +348,127 @@ class Doktor(SaglikPersoneli):
         """Doktor sadece kendi uzmanlık alanındaki kliniklerde hasta bakabilir."""
         return self.uzmanlik.lower() == klinik.ad.lower()
 
+    def klinikten_ayril(self, klinik) -> None:      # overriding
+        super().klinikten_ayril(klinik)
+        self._klinik_hizmetleri.pop(klinik, None)
+        for asistan in list(self._asistanlar):      # ortak kliniği kalmayan asistan ayrılır
+            asistan.ortak_klinik_yoksa_ayril()
+
+    def birim_kaldirildi(self, birim) -> None:      # overriding
+        """Silinen hastane veya kliniğe ait doktor müsaitliklerini temizler."""
+        super().birim_kaldirildi(birim)
+        # birim bir Hastane ise veya adı eşleşiyorsa o hastanedeki müsaitlikleri kaldır
+        self._musaitlik = [
+            m for m in self._musaitlik
+            if getattr(m, "hastane", None) is not birim
+            and getattr(getattr(m, "hastane", None), "ad", None) != getattr(birim, "ad", None)
+            and getattr(m, "hastane", None) != getattr(birim, "ad", None)
+        ]
+        # Eğer birim Klinik ise ve doktorun o hastanede başka kliniği kalmadıysa:
+        hastanelerim = self.hastaneler()
+        if hastanelerim:
+            self._musaitlik = [
+                m for m in self._musaitlik
+                if getattr(m, "hastane", None) is None or getattr(m, "hastane", None) in hastanelerim
+            ]
+        else:
+            self._musaitlik = []
+
     @property
     def musaitlik(self) -> tuple:
         return tuple(self._musaitlik)
 
-    def musaitlik_ekle(self, baslangic, bitis) -> None:
-        """Çalışılan zaman aralığı (datetime). Örn: 14.10.2026 09:00 - 12:00"""
+    def musaitlik_ekle(self, baslangic, bitis, hastane=None) -> None:
+        """Çalışılan zaman aralığı (datetime) ve hastane. Örn: 14.10.2026 09:00 - 12:00, Merkez"""
         self._yetki_kontrol("musaitlik_tanimla")
         if baslangic >= bitis:
             raise ValueError("Bitiş, başlangıçtan sonra olmalı.")
-        for b, s in self._musaitlik:
-            if baslangic < s and b < bitis:
-                raise ValueError("Bu aralık mevcut bir müsaitlikle çakışıyor.")
-        self._musaitlik.append((baslangic, bitis))
 
-    def musaitlik_yukle(self, baslangic, bitis) -> None:
-        """Dosyadan okunan müsaitliği kontrol yapmadan ekler."""
-        self._musaitlik.append((baslangic, bitis))
+        # Hastane çalışma saatleri kontrolü:
+        if hastane is not None:
+            doktor_hastaneleri = self.hastaneler()
+            if doktor_hastaneleri and hastane not in doktor_hastaneleri:
+                raise SistemHatasi(f"{hastane.ad} hastanesinde kayıtlı bir kliniğiniz bulunmuyor.")
+            if baslangic.time() < hastane.acilis or bitis.time() > hastane.kapanis or baslangic.date() != bitis.date():
+                raise ValueError(
+                    f"{hastane.ad} çalışma saatleri {hastane.acilis.strftime('%H:%M')} - {hastane.kapanis.strftime('%H:%M')} arasındadır.")
+
+        # Çakışma kontrolü (Doktor başka bir hastanede de olsa aynı saatte müsaitlik ekleyemez):
+        for m in self._musaitlik:
+            b, s = m[0], m[1]
+            if baslangic < s and b < bitis:
+                mevcut_hastane = getattr(m, "hastane", None)
+                if mevcut_hastane and hastane and mevcut_hastane is not hastane:
+                    raise ValueError(
+                        f"Bu saat aralığında {mevcut_hastane.ad} hastanesinde zaten müsaitliğiniz var; aynı anda iki hastanede çalışamazsınız.")
+                raise ValueError("Bu aralık mevcut bir müsaitlikle çakışıyor.")
+
+        self._musaitlik.append(Musaitlik(baslangic, bitis, hastane))
+
+    def musaitlik_yukle(self, baslangic, bitis, hastane=None) -> None:
+        """Dosyadan okunan müsaitliği ekler."""
+        self._musaitlik.append(Musaitlik(baslangic, bitis, hastane))
 
     def musaitlik_sil(self, sira: int, randevular) -> None:
         """Müsaitliği siler. İçinde aktif randevu varsa silinemez."""
         self._yetki_kontrol("musaitlik_tanimla")
-        baslangic, bitis = self._musaitlik[sira]
+        m = self._musaitlik[sira]
+        baslangic, bitis = m[0], m[1]
         for r in randevular:
             if r.aktif_mi and baslangic <= r.baslangic and r.bitis <= bitis:
                 raise RandevuHatasi(
                     "Bu aralıkta aktif randevu var; önce randevuyu iptal/reddedin.")
         del self._musaitlik[sira]
 
-    def musaitlik_listesi(self, gun) -> list:
-        """Verilen günün (date) (baslangic, bitis) aralıkları."""
-        return [(b, s) for b, s in self._musaitlik if b.date() == gun]
+    def musaitlik_listesi(self, gun, hastane=None) -> list:
+        """Verilen günün (date) (baslangic, bitis) aralıkları. Hastane verilirse sadece o hastanedekiler."""
+        return [m for m in self._musaitlik
+                if m[0].date() == gun and (hastane is None or getattr(m, "hastane", None) in (None, hastane))]
 
-    def musait_mi(self, baslangic, bitis) -> bool:
-        for b, s in self._musaitlik:
+    def musait_mi(self, baslangic, bitis, hastane=None) -> bool:
+        for m in self._musaitlik:
+            b, s = m[0], m[1]
             if b <= baslangic and bitis <= s:
-                return True
+                m_hastane = getattr(m, "hastane", None)
+                if hastane is None or m_hastane is None or m_hastane is hastane:
+                    return True
         return False
+
+    def hastane_referanslarini_bagla(self, kurum) -> None:
+        """Dosyadan okunan string hastane adlarını veya eksik hastaneleri kuruma bağlar."""
+        doktor_hastaneleri = self.hastaneler(kurum)
+        if not doktor_hastaneleri:
+            self._musaitlik = []
+            return
+        gunler = sorted(list({m[0].date() for m in self._musaitlik}))
+        gun_hastane = {}
+        for idx, g in enumerate(gunler):
+            gun_hastane[g] = doktor_hastaneleri[idx % len(doktor_hastaneleri)]
+
+        gecerli_musaitlik = []
+        for m in self._musaitlik:
+            h = getattr(m, "hastane", None)
+            if isinstance(h, str):
+                try:
+                    bulunan = kurum.hastane_bul(h)
+                    gecerli_musaitlik.append(Musaitlik(m[0], m[1], bulunan))
+                except BulunamadiHatasi:
+                    # Silinmiş hastane kaydı kalmışsa atla
+                    continue
+            elif h is None:
+                secilen = gun_hastane.get(m[0].date(), doktor_hastaneleri[0])
+                gecerli_musaitlik.append(Musaitlik(m[0], m[1], secilen))
+            else:
+                if h in kurum.hastaneler:
+                    gecerli_musaitlik.append(m)
+        self._musaitlik = gecerli_musaitlik
 
     def sozluge(self) -> dict:
         veri = super().sozluge()
-        veri["musaitlik"] = [[b.isoformat(), s.isoformat()] for b, s in self._musaitlik]
+        veri["musaitlik"] = [
+            [m[0].isoformat(), m[1].isoformat(), getattr(m, "hastane", None).ad if getattr(m, "hastane", None) else None]
+            for m in self._musaitlik
+        ]
         return veri
 
     @property
@@ -365,6 +542,15 @@ class Doktor(SaglikPersoneli):
             sonuc.extend(self.sunulan_hizmetler(klinik))
         return sonuc
 
+    def hizmet_cikarildi(self, klinik, hizmet) -> None:      # overriding
+        """Kliniğin bir hizmeti silindiğinde doktorun o klinikteki özel seçimini günceller."""
+        if klinik in self._klinik_hizmetleri:
+            kalan = tuple(h for h in self._klinik_hizmetleri[klinik] if h is not hizmet)
+            if kalan:
+                self._klinik_hizmetleri[klinik] = kalan
+            else:
+                self._klinik_hizmetleri.pop(klinik, None)
+
     def recete_yaz(self, randevu, ilaclar, doktor_notu: str = "") -> Recete:
         """Kendi onaylı randevusu için reçete yazar (varsa günceller)."""
         self._yetki_kontrol("recete_yaz")
@@ -411,6 +597,15 @@ class Asistan(SaglikPersoneli):
             self._doktor._asistan_ayrildi(self)
             self._doktor = None
 
+    def ortak_klinik_yoksa_ayril(self) -> None:
+        """Doktorla ortak klinik kalmadıysa asistan doktordan ayrılır."""
+        if self._doktor is not None and not any(self._doktor in k.doktorlar for k in self._klinikler):
+            self.doktordan_ayril()
+
+    def klinikten_ayril(self, klinik) -> None:      # overriding
+        super().klinikten_ayril(klinik)
+        self.ortak_klinik_yoksa_ayril()
+
     def hasta_hazirla(self, randevu) -> str:
         self._yetki_kontrol("hasta_hazirla")
         if randevu.doktor is not self._doktor:
@@ -432,9 +627,48 @@ class Hemsire(SaglikPersoneli):
     def yetkiler(self) -> list[str]:
         return super().yetkiler() + ["hasta_kabul"]
 
-    def hasta_kabul(self, randevu) -> str:
+    def hasta_kabul(self, randevu, zaman=None, odeme=None) -> str:
+        """Hasta geldi. Ödeme yapılmamışsa 'odeme' ile ödeme yerinde alınır ve kabul birlikte yapılır."""
         self._yetki_kontrol("hasta_kabul")
-        return f"{randevu.hasta.tam_ad} hasta kabulü yapıldı."
+        if randevu.klinik not in self._klinikler:
+            raise YetkiHatasi("Sadece atandığınız kliniklerdeki randevuların hasta kabulünü yapabilirsiniz.")
+        kl_hastane = getattr(randevu.klinik, "hastane", None)
+        if kl_hastane is not None and randevu.hastane is not kl_hastane:
+            raise YetkiHatasi("Sadece atandığınız hastanedeki randevuların hasta kabulünü yapabilirsiniz.")
+        randevu.hasta_kabul_et(self, zaman, odeme)
+        return f"{randevu.hasta.tam_ad} hasta kabulü yapıldı ({randevu.kabul_metni})."
+
+    def hasta_gelmedi(self, randevu, zaman=None) -> str:
+        self._yetki_kontrol("hasta_kabul")
+        if randevu.klinik not in self._klinikler:
+            raise YetkiHatasi("Sadece atandığınız kliniklerdeki randevular için işlem yapabilirsiniz.")
+        kl_hastane = getattr(randevu.klinik, "hastane", None)
+        if kl_hastane is not None and randevu.hastane is not kl_hastane:
+            raise YetkiHatasi("Sadece atandığınız hastanedeki randevular için işlem yapabilirsiniz.")
+        randevu.hasta_gelmedi_isaretle(self, zaman)
+        return f"{randevu.hasta.tam_ad} için 'Hasta gelmedi' işaretlendi. 24 saat randevu engeli uygulandı."
+
+    def onayli_randevular(self, randevular, gun=None) -> list:
+        """Hemşirenin sadece görev yaptığı hastane ve kliniklerdeki onaylı randevuları."""
+        sonuc = []
+        for r in randevular:
+            if r.durum.name != "ONAYLANDI":
+                continue
+            if r.klinik not in self._klinikler:
+                continue
+            kl_hastane = getattr(r.klinik, "hastane", None)
+            if kl_hastane is not None and r.hastane is not kl_hastane:
+                continue
+            if gun is not None and r.baslangic.date() != gun:
+                continue
+            sonuc.append(r)
+        return sonuc
+
+    def bugunun_onayli_randevulari(self, randevular, gun=None) -> list:
+        """Hemşirenin atandığı kliniklerdeki bugünün onaylı randevuları."""
+        from datetime import date
+        hedef_gun = gun or date.today()
+        return self.onayli_randevular(randevular, gun=hedef_gun)
 
 
 class Teknisyen(SaglikPersoneli):
@@ -469,7 +703,8 @@ class Yonetici(Kullanici):
     def yetkiler(self) -> list[str]:
         return ["hastane_ekle", "klinik_ekle", "doktor_ekle", "hizmet_ekle", "randevu_ekle",
                 "randevu_yonet", "personel_kaydet", "personel_ata", "asistan_bagla",
-                "doktor_hizmet_tanimla", "hastane_yoneticisi_ata", "klinik_yoneticisi_ata"]
+                "doktor_hizmet_tanimla", "hastane_yoneticisi_ata", "klinik_yoneticisi_ata",
+                "hastane_duzenle", "hastane_sil", "klinik_sil", "gorev_ekle", "hizmet_sil"]
 
     @property
     def kapsam_etiketi(self) -> str:
@@ -507,6 +742,11 @@ class Yonetici(Kullanici):
         self._yetki_kontrol("personel_kaydet")
         uygulama.kullanici_ekle(personel)
 
+    def gorev_ekle(self, uygulama, tur: str, ad: str) -> None:
+        """Yeni uzmanlık / görev tanımı ekler."""
+        self._yetki_kontrol("gorev_ekle")
+        uygulama.gorev_ekle(tur, ad)
+
     def personel_ata(self, klinik, personel) -> None:
         """Her personel türünü kliniğe atar (doktor/asistan/hemşire...)."""
         self._yetki_kontrol("personel_ata")
@@ -534,6 +774,25 @@ class Yonetici(Kullanici):
         self._hastane_kontrol(hastane)
         hastane.klinik_ekle(klinik)
 
+    def hastane_duzenle(self, uygulama, hastane, ad, acilis, kapanis) -> None:
+        """Hastanenin adını ve çalışma saatlerini günceller."""
+        self._yetki_kontrol("hastane_duzenle")
+        self._hastane_kontrol(hastane)
+        uygulama.hastane_guncelle(hastane, ad, acilis, kapanis)
+
+    def hastane_sil(self, uygulama, hastane) -> None:
+        """Hastaneyi (ve tüm kliniklerini) siler."""
+        self._yetki_kontrol("hastane_sil")
+        self._hastane_kontrol(hastane)
+        uygulama.hastane_sil(hastane)
+
+    def klinik_sil(self, uygulama, hastane, klinik) -> None:
+        """Kliniği kapatır; personel kliniğe bağlı olmaktan çıkar."""
+        self._yetki_kontrol("klinik_sil")
+        self._hastane_kontrol(hastane)
+        self._klinik_kontrol(klinik)
+        uygulama.klinik_sil(hastane, klinik)
+
     def doktor_ekle(self, klinik, doktor) -> None:
         self._yetki_kontrol("doktor_ekle")
         self._klinik_kontrol(klinik)
@@ -543,6 +802,13 @@ class Yonetici(Kullanici):
         self._yetki_kontrol("hizmet_ekle")
         self._klinik_kontrol(klinik)
         klinik.hizmet_ekle(hizmet)
+
+    def hizmet_sil(self, uygulama, hastane, klinik, hizmet) -> None:
+        """Kliniğe ait bir hizmeti siler."""
+        self._yetki_kontrol("hizmet_sil")
+        self._hastane_kontrol(hastane)
+        self._klinik_kontrol(klinik)
+        uygulama.hizmet_sil(hastane, klinik, hizmet)
 
     def randevu_ekle(self, sistem, hasta, hastane, klinik, doktor, hizmet, baslangic):
         self._yetki_kontrol("randevu_ekle")
@@ -642,10 +908,17 @@ class HastaneYoneticisi(Yonetici):
         return "Hastane Yöneticisi"
 
     def yetkiler(self) -> list[str]:
-        return [y for y in super().yetkiler() if y not in ("hastane_ekle", "hastane_yoneticisi_ata")]
+        return [y for y in super().yetkiler()
+                if y not in ("hastane_ekle", "hastane_sil", "hastane_yoneticisi_ata")]
+
+    def birim_kaldirildi(self, birim) -> None:      # overriding
+        if birim is self._hastane:
+            self._hastane = None
 
     def yonetilebilir_kullanicilar(self, uygulama) -> list:
         """Hastane yöneticisi sadece normal kullanıcıları ve kendi hastanesindeki klinik yöneticilerini seçebilir."""
+        if self._hastane is None:
+            return []
         return [(sira, k) for sira, k in enumerate(uygulama.kullanicilar)
                 if k.kayitli_mi and (type(k) is Hasta
                                      or (type(k) is KlinikYoneticisi and k.hastane is self._hastane))]
@@ -727,7 +1000,34 @@ class KlinikYoneticisi(Yonetici):
 
     def yetkiler(self) -> list[str]:
         return [y for y in super().yetkiler()
-                if y not in ("hastane_ekle", "klinik_ekle", "hastane_yoneticisi_ata", "klinik_yoneticisi_ata")]
+                if y not in ("hastane_ekle", "klinik_ekle", "hastane_yoneticisi_ata", "klinik_yoneticisi_ata",
+                             "hastane_duzenle", "hastane_sil", "klinik_sil", "hizmet_sil",
+                             "personel_ata", "gorev_ekle")]
+
+    def personel_ata(self, klinik, personel) -> None:
+        raise YetkiHatasi("Klinik yöneticisinin personel atama yetkisi yoktur; kaydettiğiniz personel doğrudan kliniğinize atanır.")
+
+    def personel_kaydet(self, uygulama, personel) -> None:
+        self._yetki_kontrol("personel_kaydet")
+        if self._klinik is None:
+            raise YetkiHatasi("Sorumlu olduğunuz bir klinik atanmadığı için personel kaydedemezsiniz.")
+        if isinstance(personel, Doktor):
+            if not personel.klinige_uygun_mu(self._klinik):
+                raise YetkiHatasi(
+                    f"Sadece sorumlu olduğunuz '{self._klinik.ad}' kliniğine uygun doktor kaydedebilirsiniz.")
+        elif isinstance(personel, Asistan):
+            as_uzm = (personel.uzmanlik or "").lower().strip()
+            kl_ad = self._klinik.ad.lower().strip()
+            if kl_ad not in as_uzm and as_uzm not in kl_ad and as_uzm != "asistan":
+                raise YetkiHatasi(
+                    f"Sadece sorumlu olduğunuz '{self._klinik.ad}' kliniği ile alakalı asistan kaydedebilirsiniz.")
+        super().personel_kaydet(uygulama, personel)
+        personel.klinige_ata(self._klinik)
+
+    def birim_kaldirildi(self, birim) -> None:      # overriding
+        if birim is self._klinik or birim is self._hastane:
+            self._hastane = None
+            self._klinik = None
 
     def yonetilebilir_kullanicilar(self, uygulama) -> list:
         return []

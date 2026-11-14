@@ -1,4 +1,3 @@
-"""Testlerde saat sabittir: örnek veriler 2026 Ekim tarihlidir, gerçek saat ilerlese de testler bozulmaz."""
 from datetime import datetime
 
 import randevu.randevu as randevu_modulu

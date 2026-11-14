@@ -1,4 +1,3 @@
-"""Flask arayüzü için duman (smoke) testleri."""
 import unittest
 
 import app as uygulama_modulu

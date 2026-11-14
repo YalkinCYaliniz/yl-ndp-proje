@@ -29,9 +29,10 @@
 
 {% if secili %}
 <h2>{{ baslik }}</h2>
-{% if kategoriler %}
+{% if kategoriler or hastaneler %}
 <form method="get" class="kart">
   <input type="hidden" name="grup" value="{{ secili }}">
+  {% if kategoriler %}
   <label>Kategori:
     <select name="rol" onchange="this.form.submit()">
       <option value="">Tümü</option>
@@ -40,6 +41,17 @@
       {% endfor %}
     </select>
   </label>
+  {% endif %}
+  {% if secili == 'personel' and hastaneler %}
+  <label>Hastane:
+    <select name="hastane" onchange="this.form.submit()">
+      <option value="">Tüm Hastaneler</option>
+      {% for h in hastaneler %}
+      <option value="{{ h.ad }}" {{ 'selected' if h.ad == secili_hastane }}>{{ h.ad }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endif %}
   <input name="q" value="{{ isim }}" placeholder="İsimle ara">
   <button>Ara</button>
 </form>
@@ -55,6 +67,7 @@
     {% endif %}
     {% if k.klinikler is defined %}
     <div style="margin-top:8px">
+      <span class="etiket"><b>Hastane:</b> {{ k.hastane_metni() }}</span>
       {% for kl in k.klinikler %}<span class="etiket">{{ kl.ad }}</span>{% endfor %}
       {% if k.doktor is defined and k.doktor %}<span class="etiket">{{ k.doktor.tam_ad }} ({{ k.doktor.uzmanlik }})</span>{% endif %}
       {% if k.asistan_metni is defined and k.asistan_metni %}<span class="etiket">{{ k.asistan_metni }}</span>{% endif %}

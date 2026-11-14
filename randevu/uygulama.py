@@ -1,11 +1,23 @@
-"""Uygulamanın tüm verisini tek yerde tutar (kurum, randevu sistemi, kullanıcılar)."""
 from randevu.guvenlik import Sifre
 from randevu.hatalar import SistemHatasi
-from randevu.kullanici import Hasta, Misafir, Doktor
+from randevu.kullanici import Hasta, Misafir, Doktor, SaglikPersoneli
 from randevu.kurum import Kurum
 from randevu.randevu import RandevuSistemi
 
 VARSAYILAN_SIFRE = "123456"      # demo: tüm örnek kullanıcıların şifresi
+
+VARSAYILAN_GOREVLER = {
+    "doktor": [
+        "Dahiliye", "Kardiyoloji", "Göz Hastalıkları", "Radyoloji", "Ortopedi",
+        "Çocuk Sağlığı", "Laboratuvar", "Nöroloji", "Kulak Burun Boğaz",
+        "Genel Cerrahi", "Dermatoloji", "Üroloji", "Kadın Hastalıkları",
+        "Psikiyatri", "Göğüs Hastalıkları", "Fizik Tedavi", "Endokrinoloji",
+        "Gastroenteroloji"
+    ],
+    "asistan": ["Asistan"],
+    "hemsire": ["Hemşirelik"],
+    "teknisyen": ["Radyoloji", "Laboratuvar"],
+}
 
 
 class Uygulama:
@@ -13,6 +25,22 @@ class Uygulama:
         self.kurum = Kurum("Yaşam Sağlık Grubu")
         self.sistem = RandevuSistemi()
         self.kullanicilar = []
+        self.gorevler = {tur: list(liste) for tur, liste in VARSAYILAN_GOREVLER.items()}
+
+    def gorev_ekle(self, tur: str, ad: str) -> None:
+        """Belirtilen personel türüne yeni bir uzmanlık veya görev adı ekler."""
+        tur_anahtar = tur.strip().lower()
+        if tur_anahtar not in self.gorevler:
+            raise SistemHatasi(f"Geçersiz personel türü: {tur}")
+        ad_temiz = ad.strip()
+        if not ad_temiz:
+            raise ValueError("Uzmanlık / görev adı boş olamaz.")
+        if any(g.lower() == ad_temiz.lower() for g in self.gorevler[tur_anahtar]):
+            raise SistemHatasi(f"'{ad_temiz}' bu personel türü için zaten tanımlı.")
+        self.gorevler[tur_anahtar].append(ad_temiz)
+
+    def gorevler_listesi(self, tur: str) -> list:
+        return list(self.gorevler.get(tur.strip().lower(), []))
 
     def kullanici_ekle(self, kullanici) -> None:
         for k in self.kullanicilar:
@@ -25,6 +53,10 @@ class Uygulama:
         if kullanici.kayitli_mi and not kullanici.sifre_var_mi:
             # Yönetici panelinden eklenen personel hemen giriş yapabilsin: ilk şifre atanır
             kullanici.sifre_belirle(Sifre.olustur(VARSAYILAN_SIFRE))
+        # Doktor uzmanlığını otomatik olarak görev listesine ekle
+        if isinstance(kullanici, Doktor) and kullanici.uzmanlik:
+            if not any(g.lower() == kullanici.uzmanlik.lower() for g in self.gorevler.get("doktor", [])):
+                self.gorevler["doktor"].append(kullanici.uzmanlik)
         self.kullanicilar.append(kullanici)
 
     def kimlik_dogrula(self, kullanici_adi: str, sifre: str):
@@ -68,3 +100,59 @@ class Uygulama:
         for r in self.sistem.randevular:
             if r.hasta is eski:
                 r.hasta = yeni
+                r.hasta = yeni
+
+    # ---- Hastane / klinik düzenleme ve silme ----
+    def hastane_guncelle(self, hastane, ad, acilis, kapanis) -> None:
+        """Hastane adı ve çalışma saatlerini günceller; gelecekteki randevuları bozmamalıdır."""
+        if hastane not in self.kurum.hastaneler:
+            raise SistemHatasi("Hastane kurumda kayıtlı değil.")
+        if self.kurum.ad_kullanilmis_mi(ad, haric=hastane):
+            raise SistemHatasi(f"'{ad.strip()}' adlı başka bir hastane zaten var.")
+        simdi = self.sistem.simdi()
+        for r in self.sistem.randevular:
+            disarida = not (acilis <= r.baslangic.time() and r.bitis.time() <= kapanis)
+            if r.hastane is hastane and r.aktif_mi and r.bitis > simdi and disarida:
+                raise SistemHatasi(
+                    "Yeni çalışma saatleri dışında kalan aktif randevu var; önce o randevuları iptal edin.")
+        hastane.duzenle(ad, acilis, kapanis)
+
+    def klinik_sil(self, hastane, klinik) -> None:
+        """Kliniği kapatır: personel bağlantıları kalkar, o kliniğe ait randevu kayıtları silinir."""
+        if klinik not in hastane.klinikler:
+            raise SistemHatasi("Klinik bu hastaneye ait değil.")
+        if self.sistem.gelecek_aktif_randevu_var_mi(lambda r: r.klinik is klinik):
+            raise SistemHatasi("Bu klinikte aktif randevu var; önce randevuları iptal/reddedin.")
+        self._klinik_kapat(hastane, klinik)
+
+    def hastane_sil(self, hastane) -> None:
+        """Hastaneyi tüm klinikleriyle birlikte kaldırır."""
+        if hastane not in self.kurum.hastaneler:
+            raise SistemHatasi("Hastane kurumda kayıtlı değil.")
+        if self.sistem.gelecek_aktif_randevu_var_mi(lambda r: r.hastane is hastane):
+            raise SistemHatasi("Bu hastanede aktif randevu var; önce randevuları iptal/reddedin.")
+        for klinik in hastane.klinikler:
+            self._klinik_kapat(hastane, klinik)
+        self.kurum.hastane_cikar(hastane)
+        for kisi in self.kullanicilar:
+            kisi.birim_kaldirildi(hastane)
+
+    def hizmet_sil(self, hastane, klinik, hizmet) -> None:
+        """Kliniğe ait bir hizmeti siler."""
+        if hastane not in self.kurum.hastaneler:
+            raise SistemHatasi("Hastane kurumda kayıtlı değil.")
+        if klinik not in hastane.klinikler:
+            raise SistemHatasi("Klinik bu hastaneye ait değil.")
+        if hizmet not in klinik.hizmetler:
+            raise SistemHatasi("Hizmet bu klinikte kayıtlı değil.")
+        if self.sistem.gelecek_aktif_randevu_var_mi(lambda r: r.klinik is klinik and r.hizmet is hizmet):
+            raise SistemHatasi("Bu hizmet için aktif randevu var; önce randevuları iptal/reddedin.")
+        klinik.hizmet_cikar(hizmet)
+        self.sistem.randevulari_sil(lambda r: r.klinik is klinik and r.hizmet is hizmet)
+
+    def _klinik_kapat(self, hastane, klinik) -> None:
+        self.sistem.randevulari_sil(lambda r: r.klinik is klinik)
+        hastane.klinik_cikar(klinik)
+        klinik.kapat()
+        for kisi in self.kullanicilar:
+            kisi.birim_kaldirildi(klinik)

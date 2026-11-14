@@ -1,4 +1,3 @@
-"""Doktorun yazdığı reçete: ilaç listesi ve hasta notu."""
 from datetime import datetime
 
 

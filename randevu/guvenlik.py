@@ -1,4 +1,3 @@
-"""Şifre güvenliği: şifre düz metin olarak saklanmaz, tuzlu özet (hash) tutulur."""
 import hashlib
 import hmac
 import os

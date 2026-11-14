@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block icerik %}
 <h2>Yönetim — {{ kullanici.rol() }} <small>({{ kullanici.kapsam_etiketi }})</small></h2>
-<div style="margin-bottom:12px">{% for y in kullanici.yetkiler() %}<span class="etiket">{{ y }}</span>{% endfor %}</div>
 <div class="izgara">
 {% if 'hastane_ekle' in kullanici.yetkiler() %}
 <div class="kart"><b>Hastane ekle</b>
@@ -9,6 +8,34 @@
   <input name="ad" placeholder="Hastane adı" required><br>
   Açılış <input type="time" name="acilis" value="08:00"> Kapanış <input type="time" name="kapanis" value="17:00">
   <button>Ekle</button></form></div>
+{% endif %}
+
+{% if 'hastane_duzenle' in kullanici.yetkiler() and hastane_secenekleri %}
+<div class="kart"><b>Hastaneyi düzenle</b>
+<form method="post" action="{{ url_for('admin_hastane_duzenle') }}">
+  <select name="h" onchange="var o=this.options[this.selectedIndex];this.form.ad.value=o.dataset.ad;this.form.acilis.value=o.dataset.acilis;this.form.kapanis.value=o.dataset.kapanis">
+    {% for h_sira, h in hastane_secenekleri %}<option value="{{ h_sira }}" data-ad="{{ h.ad }}" data-acilis="{{ h.acilis.strftime('%H:%M') }}" data-kapanis="{{ h.kapanis.strftime('%H:%M') }}">{{ h.ad }}</option>{% endfor %}
+  </select><br>
+  {% set ilk = hastane_secenekleri[0][1] %}
+  <input name="ad" value="{{ ilk.ad }}" required><br>
+  Açılış <input type="time" name="acilis" value="{{ ilk.acilis.strftime('%H:%M') }}"> Kapanış <input type="time" name="kapanis" value="{{ ilk.kapanis.strftime('%H:%M') }}">
+  <button>Güncelle</button></form></div>
+{% endif %}
+
+{% if 'hastane_sil' in kullanici.yetkiler() %}
+<div class="kart"><b>Hastane sil</b>
+<form method="post" action="{{ url_for('admin_hastane_sil') }}" onsubmit="return confirm('Hastane ve tüm klinikleri silinsin mi?')">
+  <select name="h">{% for h_sira, h in hastane_secenekleri %}<option value="{{ h_sira }}">{{ h.ad }}</option>{% endfor %}</select>
+  <button class="tehlike">Sil</button></form>
+  <small>Gelecekte aktif randevusu olan hastane silinemez.</small></div>
+{% endif %}
+
+{% if 'klinik_sil' in kullanici.yetkiler() %}
+<div class="kart"><b>Klinik sil</b>
+<form method="post" action="{{ url_for('admin_klinik_sil') }}" onsubmit="return confirm('Klinik silinsin mi? Personel kliniğe bağlı olmaktan çıkar.')">
+  <select name="klinik">{% for kl_sira, h, k in klinik_secenekleri %}<option value="{{ kl_sira }}">{{ h.ad }} / {{ k.ad }}</option>{% endfor %}</select>
+  <button class="tehlike">Sil</button></form>
+  <small>Gelecekte aktif randevusu olan klinik silinemez. Personel silinmez, sadece kliniğe bağlantısı kalkar.</small></div>
 {% endif %}
 
 {% if 'klinik_ekle' in kullanici.yetkiler() %}
@@ -24,23 +51,66 @@
   <select name="tur"><option value="muayene">Muayene</option><option value="radyoloji">Radyoloji</option><option value="laboratuvar">Laboratuvar</option></select><br>
   <input name="ad" placeholder="Hizmet adı" required>
   <input name="sure" type="number" placeholder="Süre (dk)" required style="width:100px">
-  <input name="ucret" type="number" step="0.01" placeholder="Ücret" required style="width:100px"><br>
-  <input name="ekstra" type="number" step="0.01" placeholder="Cihaz ücreti / tahlil sayısı">
+  <input name="ucret" type="number" step="0.01" placeholder="Taban ücret" required style="width:100px"><br>
+  <input name="ekstra" type="number" step="0.01" placeholder="Cihaz ücreti (Radyoloji) / Tahlil sayısı">
   <button>Ekle</button></form></div>
+
+{% if 'hizmet_sil' in kullanici.yetkiler() %}
+<div class="kart"><b>Hizmet sil</b>
+{% if hizmet_secenekleri %}
+<form method="post" action="{{ url_for('admin_hizmet_sil') }}" onsubmit="return confirm('Hizmet silinsin mi?')">
+  <select name="hizmet">{% for hz_sira, h, k, s in hizmet_secenekleri %}<option value="{{ hz_sira }}">{{ h.ad }} / {{ k.ad }} — {{ s.ad }} ({{ s.ucret_metni }})</option>{% endfor %}</select>
+  <button class="tehlike">Sil</button></form>
+  <small>Gelecekte aktif randevusu olan hizmet silinemez.</small>
+{% else %}
+  <small>Silinebilecek hizmet bulunmuyor.</small>
+{% endif %}
+</div>
+{% endif %}
 
 <div class="kart"><b>Personel kaydet</b>
 <form method="post" action="{{ url_for('admin_personel') }}">
-  <select name="tur"><option value="doktor">Doktor</option><option value="asistan">Asistan</option><option value="hemsire">Hemşire</option><option value="teknisyen">Teknisyen</option></select><br>
+  <select name="tur" id="personel_tur_secim" onchange="personelTuruDegisti(this)">
+    <option value="doktor">Doktor</option>
+    <option value="asistan">Asistan</option>
+    <option value="hemsire">Hemşire</option>
+    <option value="teknisyen">Teknisyen</option>
+  </select><br>
   <input name="ad" placeholder="Ad" required><input name="soyad" placeholder="Soyad" required><br>
-  <input name="tc" placeholder="TC (11 hane)" required><input name="uzmanlik" placeholder="Uzmanlık / görev"><br>
-  <input name="cihaz" placeholder="Cihaz (sadece teknisyen)">
-  <button>Kaydet</button></form></div>
+  <input name="tc" placeholder="TC (11 hane)" required><br>
+  <div id="alan_uzmanlik">
+    <select id="personel_uzmanlik_secim" name="uzmanlik" required>
+      {% for g in gorevler.get('doktor', []) %}
+      <option value="{{ g }}">{{ g }}</option>
+      {% endfor %}
+    </select><br>
+  </div>
+  <div id="alan_cihaz" style="display:none;">
+    <input name="cihaz" id="personel_cihaz_input" placeholder="Cihaz (sadece teknisyen)"><br>
+  </div>
+  <button>Kaydet</button></form>
+  {% if kullanici.rol() == 'Klinik Yöneticisi' and kullanici.klinik %}
+  <small>Kaydedilen personel doğrudan sorumlu olduğunuz <b>{{ kullanici.klinik.ad }}</b> kliniğine atanır.</small>
+  {% endif %}
+</div>
 
+{% if 'gorev_ekle' in kullanici.yetkiler() %}
+<div class="kart"><b>Doktor uzmanlık alanı ekle</b>
+<form method="post" action="{{ url_for('admin_gorev_ekle') }}">
+  <input type="hidden" name="tur" value="doktor">
+  Uzmanlık adı:<br>
+  <input name="ad" placeholder="Örn: Onkoloji, Üroloji" required><br>
+  <button>Uzmanlık ekle</button></form>
+  <small>Doktorlar için yeni bir klinik uzmanlık alanı ekler.</small></div>
+{% endif %}
+
+{% if 'personel_ata' in kullanici.yetkiler() %}
 <div class="kart"><b>Personeli kliniğe ata</b>
 <form method="post" action="{{ url_for('admin_personel_ata') }}">
   <select name="personel">{% for p_sira, p in personeller %}<option value="{{ p_sira }}">{{ p.rol() }} · {{ p.tam_ad }}{{ ' (' ~ p.uzmanlik ~ ')' if p.rol() == 'Doktor' else ' (' ~ p.klinik_metni ~ ')' }}</option>{% endfor %}</select><br>
   <select name="klinik">{% for kl_sira, h, k in klinik_secenekleri %}<option value="{{ kl_sira }}">{{ h.ad }} / {{ k.ad }}</option>{% endfor %}</select>
   <button>Ata</button></form></div>
+{% endif %}
 
 <div class="kart"><b>Klinik seçerek doktora asistan bağla (en fazla 3)</b>
 <form method="get" action="{{ url_for('panel') }}">
@@ -72,13 +142,153 @@
 
 <div class="kart"><b>Asistanı doktora bağla / başka doktora taşı</b>
 <form method="post" action="{{ url_for('admin_asistan_bagla') }}">
-  <select name="asistan">{% for a_sira, a in asistanlar %}<option value="{{ a_sira }}">{{ a.tam_ad }} ({{ a.klinik_metni }}){{ ' · şu an: ' ~ a.doktor.tam_ad ~ ' (' ~ a.doktor.uzmanlik ~ ')' if a.doktor }}</option>{% endfor %}</select><br>
-  <select name="doktor">{% for d_sira, d in doktorlar %}<option value="{{ d_sira }}">{{ d.tam_ad }} ({{ d.uzmanlik }}) · {{ d.asistanlar|length }}/3</option>{% endfor %}</select>
+  Asistan:<br>
+  <select id="bagla_asistan_secim" name="asistan" onchange="asistanDegisti(this)">
+    {% for a_sira, a, a_konum, a_h_adlar, a_k_adlar in asistanlar %}
+    <option value="{{ a_sira }}"
+            data-hastaneler="{{ a_h_adlar|join(';') }}"
+            data-klinikler="{{ a_k_adlar|join(';') }}"
+            data-uzmanlik="{{ a.uzmanlik }}"
+            {{ 'selected' if a_sira == secili_as_sira }}>
+      {{ a.tam_ad }} ({{ a_konum }}){{ ' · şu an: ' ~ a.doktor.tam_ad ~ ' (' ~ a.doktor.uzmanlik ~ ')' if a.doktor }}
+    </option>
+    {% endfor %}
+  </select><br>
+  Doktor:<br>
+  <select id="bagla_doktor_secim" name="doktor">
+    {% for d_sira, d, d_konum, d_h_adlar, d_k_adlar in doktorlar %}
+    <option value="{{ d_sira }}"
+            data-hastaneler="{{ d_h_adlar|join(';') }}"
+            data-klinikler="{{ d_k_adlar|join(';') }}"
+            data-tam-ad="{{ d.tam_ad }}"
+            data-uzmanlik="{{ d.uzmanlik }}"
+            data-konum="{{ d_konum }}"
+            data-asistan-sayisi="{{ d.asistanlar|length }}">
+      {{ d.tam_ad }} ({{ d.uzmanlik }}) — {{ d_konum }} · {{ d.asistanlar|length }}/3
+    </option>
+    {% else %}
+    <option value="" disabled selected>Bu asistan için uygun doktor bulunamadı</option>
+    {% endfor %}
+  </select><br>
   <button>Bağla</button></form>
-  <small>Asistan ve doktor ortak bir klinikte olmalı. Bir doktorun en fazla 3 asistanı olabilir.</small>
+  <small>Asistan seçildiğinde yalnızca aynı hastane ve aynı klinikteki doktorlar listelenir (henüz hastanesi yoksa uzmanlığıyla alakalı doktorlar listelenir).</small>
   <form method="post" action="{{ url_for('admin_asistan_ayir') }}" style="margin-top:10px">
-    <select name="asistan">{% for a_sira, a in asistanlar %}<option value="{{ a_sira }}">{{ a.tam_ad }} ({{ a.klinik_metni }}){{ ' · ' ~ a.doktor.tam_ad ~ ' (' ~ a.doktor.uzmanlik ~ ')' if a.doktor }}</option>{% endfor %}</select>
+    <select name="asistan">
+      {% for a_sira, a, a_konum, a_h_adlar, a_k_adlar in asistanlar %}
+      <option value="{{ a_sira }}">{{ a.tam_ad }} ({{ a_konum }}){{ ' · ' ~ a.doktor.tam_ad ~ ' (' ~ a.doktor.uzmanlik ~ ')' if a.doktor }}</option>
+      {% endfor %}
+    </select>
     <button class="tehlike">Doktordan ayır</button></form></div>
+
+<script>
+var tumGorevler = {{ gorevler|tojson }};
+function personelTuruDegisti(sel) {
+  var uzSelect = document.getElementById('personel_uzmanlik_secim');
+  var alanUzmanlik = document.getElementById('alan_uzmanlik');
+  var alanCihaz = document.getElementById('alan_cihaz');
+  var tur = sel.value;
+
+  if (tur === 'asistan' || tur === 'hemsire') {
+    if (alanUzmanlik) alanUzmanlik.style.display = 'none';
+    if (alanCihaz) alanCihaz.style.display = 'none';
+    if (uzSelect) uzSelect.removeAttribute('required');
+  } else if (tur === 'teknisyen') {
+    if (alanUzmanlik) alanUzmanlik.style.display = 'block';
+    if (alanCihaz) alanCihaz.style.display = 'block';
+    if (uzSelect) {
+      uzSelect.setAttribute('required', 'required');
+      uzSelect.innerHTML = '';
+      var tkListe = (tumGorevler && tumGorevler['teknisyen']) ? tumGorevler['teknisyen'] : ['Radyoloji', 'Laboratuvar'];
+      tkListe.forEach(function(g) {
+        var opt = document.createElement('option');
+        opt.value = g;
+        opt.text = g;
+        uzSelect.appendChild(opt);
+      });
+    }
+  } else { // doktor
+    if (alanUzmanlik) alanUzmanlik.style.display = 'block';
+    if (alanCihaz) alanCihaz.style.display = 'none';
+    if (uzSelect) {
+      uzSelect.setAttribute('required', 'required');
+      uzSelect.innerHTML = '';
+      var drListe = (tumGorevler && tumGorevler['doktor']) ? tumGorevler['doktor'] : [];
+      drListe.forEach(function(g) {
+        var opt = document.createElement('option');
+        opt.value = g;
+        opt.text = g;
+        uzSelect.appendChild(opt);
+      });
+    }
+  }
+}
+
+var tumDoktorlar = [
+  {% for d_sira, d, d_konum, d_h_adlar, d_k_adlar in tum_doktorlar %}
+  {
+    sira: {{ d_sira }},
+    tamAd: {{ d.tam_ad|tojson }},
+    uzmanlik: {{ d.uzmanlik|tojson }},
+    konum: {{ d_konum|tojson }},
+    hastaneler: {{ d_h_adlar|tojson }},
+    klinikler: {{ d_k_adlar|tojson }},
+    asistanSayisi: {{ d.asistanlar|length }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+
+function asistanDegisti(sel) {
+  var opt = sel.options[sel.selectedIndex];
+  var drSelect = document.getElementById('bagla_doktor_secim');
+  if (!opt || !drSelect) return;
+
+  var asKlinikler = opt.getAttribute('data-klinikler') ? opt.getAttribute('data-klinikler').split(';').filter(Boolean) : [];
+  var asHastaneler = opt.getAttribute('data-hastaneler') ? opt.getAttribute('data-hastaneler').split(';').filter(Boolean) : [];
+  var asUzmanlik = (opt.getAttribute('data-uzmanlik') || '').toLowerCase().trim();
+
+  drSelect.innerHTML = '';
+
+  var uygunDoktorlar = [];
+
+  if (asKlinikler.length > 0) {
+    // 1. Asistanın bağlı olduğu klinik varsa: SADECE aynı hastane ve aynı klinikteki doktorlar
+    uygunDoktorlar = tumDoktorlar.filter(function(dr) {
+      var ortakKlinik = dr.klinikler.some(function(k) { return asKlinikler.indexOf(k) !== -1; });
+      var ayniHastane = dr.hastaneler.some(function(h) { return asHastaneler.indexOf(h) !== -1; });
+      return ortakKlinik && ayniHastane;
+    });
+  } else {
+    // 2. Asistanın bağlı hastanesi yoksa: uzmanlığıyla alakalılar
+    uygunDoktorlar = tumDoktorlar.filter(function(dr) {
+      if (!asUzmanlik || asUzmanlik === 'asistan') return true;
+      var drUz = dr.uzmanlik.toLowerCase().trim();
+      if (drUz.indexOf(asUzmanlik) !== -1 || asUzmanlik.indexOf(drUz) !== -1) return true;
+      var kelimeler = asUzmanlik.split(/\s+/).filter(function(w) { return w.length > 3; });
+      return kelimeler.some(function(w) { return drUz.indexOf(w) !== -1; });
+    });
+  }
+
+  if (uygunDoktorlar.length === 0) {
+    var bosOpt = document.createElement('option');
+    bosOpt.value = '';
+    bosOpt.disabled = true;
+    bosOpt.selected = true;
+    bosOpt.text = 'Bu asistan için uygun doktor bulunamadı';
+    drSelect.appendChild(bosOpt);
+  } else {
+    uygunDoktorlar.forEach(function(dr) {
+      var o = document.createElement('option');
+      o.value = dr.sira;
+      o.text = dr.tamAd + ' (' + dr.uzmanlik + ') — ' + dr.konum + ' · ' + dr.asistanSayisi + '/3';
+      drSelect.appendChild(o);
+    });
+  }
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var asSelect = document.getElementById('bagla_asistan_secim');
+  if (asSelect) asistanDegisti(asSelect);
+});
+</script>
 
 {% if 'klinik_yoneticisi_ata' in kullanici.yetkiler() %}
 <div class="kart">
@@ -117,7 +327,7 @@
   <div style="margin:8px 0 8px 12px"><b>{{ k.ad }}</b><br>
     {% for d in k.doktorlar %}<span class="etiket">{{ d.tam_ad }} ({{ d.uzmanlik }}){{ ' · ' ~ d.asistan_metni if d.asistan_metni }}</span>{% endfor %}
     {% for p in k.personeller %}<span class="etiket">{{ p.rol() }}: {{ p.tam_ad }} ({{ p.klinik_metni }}){{ ' → ' ~ p.doktor.tam_ad ~ ' (' ~ p.doktor.uzmanlik ~ ')' if p.doktor }}</span>{% endfor %}<br>
-    {% for s in k.hizmetler %}<span class="etiket">{{ s.ad }} ({{ s.ucret }} TL)</span>{% else %}<small>Hizmet yok</small>{% endfor %}
+    {% for s in k.hizmetler %}<span class="etiket">{{ s.ad }} ({{ s.ucret_metni }})</span>{% else %}<small>Hizmet yok</small>{% endfor %}
   </div>
   {% endfor %}</details>
 {% endfor %}
@@ -128,14 +338,16 @@
   {% for r_sira, r in randevular %}
   <tr><td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td><td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
   <td>{{ r.doktor.tam_ad }} <small>({{ r.doktor.uzmanlik }})</small></td><td>{{ r.hasta.tam_ad }}</td><td>{{ r.hizmet.ad }}</td>
-  <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span></td>
+  <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span>
+    {% if r.kabul_edildi_mi %}<br><span class="rozet onaylandi" style="margin-top:4px">{{ r.kabul_metni }}</span>
+    {% elif r.gelmedi_mi %}<br><span class="rozet iptal" style="margin-top:4px">{{ r.kabul_metni }}</span>{% endif %}</td>
   <td>
     {% if r.durum.name == 'BEKLIYOR' %}
-    <form class="satir" method="post" action="{{ url_for('admin_randevu_onayla', sira=r_sira) }}"><button>Onayla</button></form>
-    <form class="satir" method="post" action="{{ url_for('admin_randevu_reddet', sira=r_sira) }}"><button class="tehlike">Reddet</button></form>
+    <form class="satir" method="post" action="{{ url_for('admin_randevu_onayla', randevu_id=r.id) }}"><button>Onayla</button></form>
+    <form class="satir" method="post" action="{{ url_for('admin_randevu_reddet', randevu_id=r.id) }}"><button class="tehlike">Reddet</button></form>
     {% endif %}
     {% if r.aktif_mi %}
-    <form class="satir" method="post" action="{{ url_for('admin_randevu_iptal', sira=r_sira) }}"><button class="tehlike">İptal</button></form>
+    <form class="satir" method="post" action="{{ url_for('admin_randevu_iptal', randevu_id=r.id) }}"><button class="tehlike">İptal</button></form>
     {% endif %}
   </td></tr>
   {% else %}<tr><td colspan="7">Randevu yok.</td></tr>{% endfor %}

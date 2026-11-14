@@ -4,7 +4,7 @@
   <div class="kart"><b>Uzmanlık Alanım</b>
     <span class="rol">Doktor</span> {{ kullanici.uzmanlik }}</div>
   <div class="kart"><b>Kliniklerim</b>
-    {% for k in kullanici.klinikler %}<span class="etiket">{{ k.ad }}</span>{% else %}-{% endfor %}</div>
+    {% for h, k in doktor_klinikleri %}<span class="etiket">{{ h.ad }} / {{ k.ad }}</span>{% else %}{% for k in kullanici.klinikler %}<span class="etiket">{{ k.ad }}</span>{% else %}-{% endfor %}{% endfor %}</div>
   <div class="kart"><b>Asistanlarım ({{ kullanici.asistanlar|length }}/{{ kullanici.MAX_ASISTAN }})</b>
     {% for a in kullanici.asistanlar %}<span class="etiket">{{ a.tam_ad }} ({{ a.klinik_metni }})</span>{% else %}Henüz asistanınız yok.{% endfor %}</div>
 </div>
@@ -30,6 +30,31 @@
 </div>
 {% endif %}
 
+<h2>Kabul Edilen Hastalar</h2>
+<table>
+  <tr><th>Tarih</th><th>Hastane / Klinik</th><th>Hasta</th><th>Hizmet</th><th>Kabul</th><th>Ödeme</th><th>Reçete</th></tr>
+  {% for sira, r in randevular if r.kabul_edildi_mi %}
+  <tr>
+    <td>{{ r.baslangic.strftime('%d.%m.%Y %H:%M') }}</td>
+    <td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
+    <td>{{ r.hasta.tam_ad }}</td>
+    <td>{{ r.hizmet.ad }}</td>
+    <td><span class="rozet onaylandi">{{ r.kabul_metni }}</span></td>
+    <td>{{ r.odenen_tutar }} TL</td>
+    <td>
+      <details>
+        <summary>{{ 'Reçeteyi düzenle' if r.recete else 'Reçete yaz' }}</summary>
+        <form method="post" action="{{ url_for('doktor_recete', randevu_id=r.id) }}">
+          <textarea name="ilaclar" rows="4" cols="30" placeholder="Her satıra bir ilaç" required>{% if r.recete %}{{ r.recete.ilaclar | join('\n') }}{% endif %}</textarea><br>
+          <input name="doktor_notu" placeholder="Doktor notu" value="{{ r.recete.doktor_notu if r.recete }}" style="width:100%">
+          <button class="yesil">Kaydet</button>
+        </form>
+      </details>
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="7">Henüz kabul edilen hasta yok.</td></tr>{% endfor %}
+</table>
+
 <h2>Randevularım</h2>
 <table>
   <tr><th>Tarih</th><th>Hastane / Klinik</th><th>Hasta</th><th>Hizmet</th><th>Durum</th><th>İşlem</th></tr>
@@ -39,20 +64,19 @@
     <td>{{ r.hastane.ad }}<br><small>{{ r.klinik.ad }}</small></td>
     <td>{{ r.hasta.tam_ad }}</td>
     <td>{{ r.hizmet.ad }}</td>
-    <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span></td>
+    <td><span class="rozet {{ r.durum.name|lower }}">{{ r.durum.value }}</span>
+      {% if r.kabul_edildi_mi %}<br><span class="rozet onaylandi" style="margin-top:4px">{{ r.kabul_metni }}</span>
+      {% elif r.gelmedi_mi %}<br><span class="rozet iptal" style="margin-top:4px">{{ r.kabul_metni }}</span>{% endif %}</td>
     <td>
       {% if r.durum.value == 'Bekliyor' %}
-      <form class="satir" method="post" action="{{ url_for('doktor_onayla', sira=sira) }}"><button class="yesil">Onayla</button></form>
-      <form class="satir" method="post" action="{{ url_for('doktor_reddet', sira=sira) }}"><button class="tehlike">Reddet</button></form>
+      <form class="satir" method="post" action="{{ url_for('doktor_onayla', randevu_id=r.id) }}"><button class="yesil">Onayla</button></form>
+      <form class="satir" method="post" action="{{ url_for('doktor_reddet', randevu_id=r.id) }}"><button class="tehlike">Reddet</button></form>
+      {% elif r.durum.value == 'Onaylandı' and r.gelmedi_mi %}
+      <small>Hasta gelmedi.</small>
+      {% elif r.durum.value == 'Onaylandı' and not r.kabul_edildi_mi %}
+      <small>Hasta gelince reçete yazılabilir.</small>
       {% elif r.durum.value == 'Onaylandı' %}
-      <details>
-        <summary>{{ 'Reçeteyi düzenle' if r.recete else 'Reçete yaz' }}</summary>
-        <form method="post" action="{{ url_for('doktor_recete', sira=sira) }}">
-          <textarea name="ilaclar" rows="4" cols="30" placeholder="Her satıra bir ilaç" required>{% if r.recete %}{{ r.recete.ilaclar | join('\n') }}{% endif %}</textarea><br>
-          <input name="doktor_notu" placeholder="Doktor notu" value="{{ r.recete.doktor_notu if r.recete }}" style="width:100%">
-          <button class="yesil">Kaydet</button>
-        </form>
-      </details>
+      <small>Kabul edildi; reçete yukarıdaki alandan yazılır.</small>
       {% endif %}
     </td>
   </tr>
@@ -68,7 +92,7 @@
     <input type="hidden" name="klinik" value="{{ sira }}">
     {% for i, s, secili_mi in hizmetler %}
       <label style="display:block"><input type="checkbox" name="hizmet" value="{{ i }}" {{ 'checked' if secili_mi }}>
-        {{ s.ad }} <small>({{ s.sure_dk }} dk, {{ s.ucret }} TL)</small></label>
+        {{ s.ad }} <small>({{ s.sure_dk }} dk · {{ s.ucret_metni }})</small></label>
     {% endfor %}
     <button>Kaydet</button>
   </form>
@@ -81,7 +105,7 @@
   Saat adımı için seçin:
   <select name="x" onchange="this.form.submit()">
     {% for h, k, s in secenekler %}
-    <option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == secili }}>{{ h.ad }} / {{ k.ad }} / {{ s.ad }} ({{ s.sure_dk }} dk)</option>
+    <option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == secili }}>{{ h.ad }} ({{ h.acilis.strftime('%H:%M') }} - {{ h.kapanis.strftime('%H:%M') }}) / {{ k.ad }} / {{ s.ad }} ({{ s.sure_dk }} dk)</option>
     {% endfor %}
   </select>
 </form>
@@ -100,18 +124,27 @@
 
 <h2>Müsaitliklerim</h2>
 <table>
-  <tr><th>Tarih</th><th>Başlangıç</th><th>Bitiş</th><th>İşlem</th></tr>
-  {% for sira, (b, s) in musaitlikler %}
+  <tr><th>Hastane</th><th>Tarih</th><th>Başlangıç</th><th>Bitiş</th><th>İşlem</th></tr>
+  {% for sira, m in musaitlikler %}
   <tr>
-    <td>{{ b.strftime('%d.%m.%Y') }}</td><td>{{ b.strftime('%H:%M') }}</td><td>{{ s.strftime('%H:%M') }}</td>
+    <td><b>{{ m.hastane.ad if m.hastane else 'Tüm Hastaneler' }}</b></td>
+    <td>{{ m[0].strftime('%d.%m.%Y') }}</td><td>{{ m[0].strftime('%H:%M') }}</td><td>{{ m[1].strftime('%H:%M') }}</td>
     <td><form class="satir" method="post" action="{{ url_for('doktor_musaitlik_sil', sira=sira) }}"
               onsubmit="return confirm('Bu müsaitlik silinsin mi?')"><button class="tehlike">Sil</button></form></td>
   </tr>
-  {% else %}<tr><td colspan="4">Tanımlı müsaitliğiniz yok.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="5">Tanımlı müsaitliğiniz yok.</td></tr>{% endfor %}
 </table>
 
 <h3>Yeni Müsaitlik Ekle</h3>
 <form method="post" action="{{ url_for('doktor_musaitlik') }}" class="kart">
+  {% if doktor_hastaneleri %}
+  Hastane:<br>
+  <select name="hastane" required>
+    {% for h in doktor_hastaneleri %}
+    <option value="{{ h.ad }}">{{ h.ad }} ({{ h.acilis.strftime('%H:%M') }} - {{ h.kapanis.strftime('%H:%M') }})</option>
+    {% endfor %}
+  </select><br>
+  {% endif %}
   Başlangıç <input type="datetime-local" name="baslangic" required>
   Bitiş <input type="datetime-local" name="bitis" required>
   <button>Ekle</button>

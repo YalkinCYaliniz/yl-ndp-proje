@@ -1,4 +1,3 @@
-"""Örnek veri: 6 hastane, her birinde 10 klinik, her klinikte en az 2 doktor."""
 from datetime import date, datetime, time, timedelta
 
 from randevu.guvenlik import Sifre
@@ -88,12 +87,14 @@ def hizmet_olustur(tanim):
     return Muayene(ad, sure, ucret)
 
 
-def calisma_ekle(doktor, baslangic_gunu, gunler, bloklar=((9, 12), (13, 16))):
+def calisma_ekle(doktor, baslangic_gunu, gunler, bloklar=((9, 12), (13, 16)), hastane=None):
     """Doktora başlangıç gününden itibaren verilen gün sıraları için çalışma blokları ekler."""
     for sira in gunler:
         gun = baslangic_gunu + timedelta(days=sira)
         for bas, bit in bloklar:
-            doktor.musaitlik_ekle(datetime.combine(gun, time(bas)), datetime.combine(gun, time(bit)))
+            doktor.musaitlik_ekle(datetime.combine(gun, time(bas)),
+                                  datetime.combine(gun, time(bit)),
+                                  hastane)
 
 
 class IsimUretici:
@@ -196,20 +197,34 @@ def ornek_veri(baslangic_gunu: date = date(2026, 10, 28)) -> Uygulama:
     anadolu_kardiyoloji = klinikler[("Anadolu Tıp Merkezi", "Kardiyoloji")]
     admin.doktor_hizmet_tanimla(hakan, anadolu_kardiyoloji, [anadolu_kardiyoloji.hizmetler[0]])
 
+    merkez_h = uyg.kurum.hastane_bul("Merkez Hastane")
+    kadikoy_h = uyg.kurum.hastane_bul("Kadıköy Hastane")
+    anadolu_h = uyg.kurum.hastane_bul("Anadolu Tıp Merkezi")
+
     # ---------------- Çalışma günleri (elle tanımlı doktorlar) ----------------
-    calisma_ekle(ayse, baslangic_gunu, (0, 1, 2))
-    calisma_ekle(can, baslangic_gunu, (0, 1, 2), ((10, 14),))
-    calisma_ekle(selin, baslangic_gunu, (0, 1, 2, 3), ((9, 12), (13, 15)))
-    calisma_ekle(murat, baslangic_gunu, (0, 1, 2), ((9, 13), (14, 17)))
-    calisma_ekle(deniz, baslangic_gunu, (0, 1, 2), ((10, 13), (14, 17)))
-    calisma_ekle(burcu, baslangic_gunu, (0, 1, 2, 3))
-    calisma_ekle(emre, baslangic_gunu, (0, 1, 2), ((9, 12), (13, 17)))
-    calisma_ekle(hakan, baslangic_gunu, (0, 1, 2), ((8, 12), (14, 18)))
-    calisma_ekle(aylin, baslangic_gunu, (1, 2, 3))
+    # Ayşe: Merkez (gün 0, 1), Kadıköy (gün 2) — hastaneler arası çakışma olmadan
+    calisma_ekle(ayse, baslangic_gunu, (0, 1), hastane=merkez_h)
+    calisma_ekle(ayse, baslangic_gunu, (2,), hastane=kadikoy_h)
+
+    # Can: Merkez (gün 0, 1), Anadolu (gün 2, 3) — hastaneler arası çakışma olmadan
+    calisma_ekle(can, baslangic_gunu, (0, 1), ((10, 14),), hastane=merkez_h)
+    calisma_ekle(can, baslangic_gunu, (2, 3), ((10, 14),), hastane=anadolu_h)
+
+    # Murat: Merkez (gün 0, 1), Anadolu (gün 2, 3)
+    calisma_ekle(murat, baslangic_gunu, (0, 1), ((9, 13), (14, 17)), hastane=merkez_h)
+    calisma_ekle(murat, baslangic_gunu, (2, 3), ((9, 13), (14, 17)), hastane=anadolu_h)
+
+    calisma_ekle(selin, baslangic_gunu, (0, 1, 2, 3), ((9, 12), (13, 15)), hastane=merkez_h)
+    calisma_ekle(deniz, baslangic_gunu, (0, 1, 2), ((10, 13), (14, 17)), hastane=kadikoy_h)
+    calisma_ekle(burcu, baslangic_gunu, (0, 1, 2, 3), hastane=kadikoy_h)
+    calisma_ekle(emre, baslangic_gunu, (0, 1, 2), ((9, 12), (13, 17)), hastane=kadikoy_h)
+    calisma_ekle(hakan, baslangic_gunu, (0, 1, 2), ((8, 12), (14, 18)), hastane=anadolu_h)
+    calisma_ekle(aylin, baslangic_gunu, (1, 2, 3), hastane=anadolu_h)
 
     # ---------------- Üretilen personel: her klinikte en az 2 doktor ----------------
     uretilen_doktor = 0
     for hastane_adi, _, _, klinik_adlari in HASTANELER:
+        su_an_hastane = uyg.kurum.hastane_bul(hastane_adi)
         for sira, klinik_adi in enumerate(klinik_adlari):
             klinik = klinikler[(hastane_adi, klinik_adi)]
             elle_tanimli = (hastane_adi, klinik_adi) in atamalar
@@ -220,7 +235,7 @@ def ornek_veri(baslangic_gunu: date = date(2026, 10, 28)) -> Uygulama:
                 kullanici_ekle(doktor)
                 admin.personel_ata(klinik, doktor)
                 desen = CALISMA_DESENLERI[uretilen_doktor % len(CALISMA_DESENLERI)]
-                calisma_ekle(doktor, baslangic_gunu, range(5), desen)
+                calisma_ekle(doktor, baslangic_gunu, range(5), desen, hastane=su_an_hastane)
                 if len(klinik.doktorlar) == 2 and len(klinik.hizmetler) > 1:
                     # ikinci doktor sadece ilk hizmeti verir (doktor bazlı hizmet örneği)
                     admin.doktor_hizmet_tanimla(doktor, klinik, [klinik.hizmetler[0]])

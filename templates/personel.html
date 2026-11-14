@@ -3,13 +3,90 @@
 <div class="izgara">
   <div class="kart"><b>Görevim</b><span class="rol">{{ kullanici.rol() }}</span>{{ kullanici.uzmanlik }}</div>
   <div class="kart"><b>Kliniklerim</b>
-    {% for k in kullanici.klinikler %}<span class="etiket">{{ k.ad }}</span>{% else %}Henüz bir kliniğe atanmadınız.{% endfor %}</div>
+    {% for k in kullanici.klinikler %}<span class="etiket">{% if k.hastane %}{{ k.hastane.ad }} / {% endif %}{{ k.ad }}</span>{% else %}Henüz bir kliniğe atanmadınız.{% endfor %}</div>
   {% if kullanici.rol() == 'Asistan' %}
   <div class="kart"><b>Bağlı olduğum doktor</b>
     {% if doktor %} {{ doktor.tam_ad }} <small>({{ doktor.uzmanlik }})</small>{% else %}Henüz bir doktora bağlı değilsiniz.{% endif %}</div>
   {% endif %}
 </div>
-<div>{% for y in kullanici.yetkiler() %}<span class="etiket">{{ y }}</span>{% endfor %}</div>
+
+{% if kullanici.rol() == 'Hemşire' %}
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-top: 24px; margin-bottom: 8px;">
+  <h2 style="margin: 0;">Kliniğimin Onaylı Randevuları (Hasta Kabul)</h2>
+  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <a href="{{ url_for('panel') }}" class="slot" style="padding: 6px 12px; font-size: 0.82rem; margin: 0; background: {% if not secili_tarih or secili_tarih == 'tumu' %}var(--ana){% else %}#8fa3b7{% endif %};">Tüm Onaylılar</a>
+    <a href="{{ url_for('panel', tarih='bugun') }}" class="slot" style="padding: 6px 12px; font-size: 0.82rem; margin: 0; background: {% if secili_tarih == 'bugun' %}var(--ana){% else %}#8fa3b7{% endif %};">Sadece Bugün</a>
+    <form method="get" action="{{ url_for('panel') }}" style="display: inline-flex; gap: 4px; align-items: center; margin: 0;">
+      <input type="date" name="tarih" value="{{ secili_tarih if secili_tarih and secili_tarih not in ['tumu', 'bugun'] else '' }}" style="padding: 4px 8px; font-size: 0.82rem; margin: 0;">
+      <button type="submit" style="padding: 6px 10px; font-size: 0.82rem; margin: 0;">Tarihe Git</button>
+    </form>
+  </div>
+</div>
+<table>
+  <tr><th>Tarih / Saat</th><th>Hastane / Klinik</th><th>Doktor</th><th>Hasta</th><th>Hizmet</th><th>Ödeme</th><th>Hasta Kabul</th><th>İşlem</th></tr>
+  {% for r_sira, r in bugunku_randevular %}
+  <tr>
+    <td>
+      <b>{{ r.baslangic.strftime('%d.%m.%Y') }}</b><br>
+      {{ r.baslangic.strftime('%H:%M') }}
+    </td>
+    <td><b>{{ r.hastane.ad }}</b><br><small>{{ r.klinik.ad }}</small></td>
+    <td>{{ r.doktor.tam_ad }}</td>
+    <td>{{ r.hasta.tam_ad }}</td>
+    <td>{{ r.hizmet.ad }}</td>
+    <td>
+      {% if r.odendi_mi %}
+        <span class="rozet onaylandi">Ödeme yapıldı</span><br><small>{{ r.odenen_tutar }} TL</small>
+      {% else %}
+        <span class="rozet bekliyor">Ödeme yapılmadı</span><br><small>Kayıtta ödenmedi; hasta geldiğinde burada ödeyecek ({{ r.hizmet.ucret_metni }})</small>
+      {% endif %}
+    </td>
+    <td>
+      {% if r.gelmedi_mi %}
+        <span class="rozet iptal">{{ r.kabul_metni }}</span>
+      {% elif r.kabul_edildi_mi %}
+        <span class="rozet onaylandi">{{ r.kabul_metni }}</span>
+      {% else %}
+        <span class="rozet bekliyor">Bekleniyor</span>
+      {% endif %}
+    </td>
+    <td>
+      {% if not r.kabul_edildi_mi and not r.gelmedi_mi %}
+      <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+        <form method="post" action="{{ url_for('hemsire_hasta_kabul', randevu_id=r.id) }}" style="margin: 0;">
+          {% if not r.odendi_mi %}
+          <select name="yontem" style="padding: 4px; font-size: 0.82rem; margin: 0;"><option value="nakit">Nakit</option><option value="kart">Kart</option><option value="sigorta">Sigorta</option></select>
+          <button class="yesil" style="padding: 5px 9px; font-size: 0.82rem; margin: 0;">Hasta geldi, ödeme al</button>
+          {% else %}
+          <button class="yesil" style="padding: 5px 9px; font-size: 0.82rem; margin: 0;">Hasta geldi</button>
+          {% endif %}
+        </form>
+        <form method="post" action="{{ url_for('hemsire_hasta_gelmedi', randevu_id=r.id) }}" style="margin: 0;">
+          <button class="tehlike" style="padding: 5px 9px; font-size: 0.82rem; margin: 0;">Hasta gelmedi</button>
+        </form>
+      </div>
+      {% elif r.gelmedi_mi %}
+        <small style="color: var(--kirmizi); font-weight: 600;">Gelmedi (24s ceza)</small>
+      {% else %}
+        <small style="color: var(--yesil); font-weight: 600;">Kabul edildi</small>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr>
+    <td colspan="8">
+      {% if secili_tarih == 'bugun' %}
+        Bugün için onaylı randevu bulunmuyor.
+      {% elif secili_tarih and secili_tarih != 'tumu' %}
+        Seçilen tarih için onaylı randevu bulunmuyor.
+      {% else %}
+        Görev yaptığınız hastane ve kliniklerde onaylı randevu bulunmuyor.
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
 
 {% if doktor %}
 <h2>Doktorumun Randevuları</h2>
